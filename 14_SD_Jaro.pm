@@ -1,15 +1,16 @@
 #######################################################################################################################################################
-# $Id: 14_SD_Jaro.pm 32 2019-01-30 12:00:00 v3.3.3-dev_05.12. $
+# $Id: 14_SD_Jaro.pm 32 2019-01-31 12:00:00 v3.3.3-dev_05.12. $
 #   
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for JAROLIFT devices.
-# 
+# It is an attempt to implement the project "Bastelbudenbuben" in Perl without personal testing.
+# For the sake of fairness to the manufacturer, I advise every user to perform extensions at their own risk.
+# The user must purchase the keys themselves.
 #
 #######################################################################################################################################################
 # !!! ToDo´s !!!
 #     - UI komplett durchtesten
 #     - SD_Jaro_Set -> lt. https://wiki.fhem.de/wiki/DevelopmentModuleIntro -> unknown argument [Parameter] choose one of [Liste möglicher Optionen]
-#     - Formatierung Tab oder Leerzeichen?
 #     - Statuswechsel nach 60-90sek. automatisch nach verfahren?
 #######################################################################################################################################################
 
@@ -54,9 +55,7 @@ my %channels = (
 
 my @standard_commands = ("up","stop","down","shade","learn","updown");
 my @addGroups;
-
 my $KeeLoq_NLF = "";
-
 
 #####################################
 sub SD_Jaro_Initialize() {
@@ -67,7 +66,7 @@ sub SD_Jaro_Initialize() {
   $hash->{AttrFn}				= "SD_Jaro_Attr";
   $hash->{SetFn}				= "SD_Jaro_Set";
   $hash->{ParseFn}			= "SD_Jaro_Parse";
-  $hash->{AttrList}			= "IODev MasterMSB MasterLSB stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
+  $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
 													"UI:Mehrzeilig,Einzeilig,aus ChannelFixed:ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
 													"addGroups Serial_send ".$readingFnAttributes;
   $hash->{FW_summaryFn}	= "SD_Jaro_summaryFn";          # displays html instead of status icon in fhemweb room-view
@@ -197,8 +196,9 @@ sub SD_Jaro_Set($$$@) {
 	my $ChannelFixed = AttrVal($name, "ChannelFixed", "none");
 	my $MasterMSB = AttrVal($name, "MasterMSB", "");
 	my $MasterLSB = AttrVal($name, "MasterLSB", "");
+	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	my $Serial_send = AttrVal($name, "Serial_send", "");
-	my $Repeats = AttrVal($name, "Repeats", "2");
+	my $Repeats = AttrVal($name, "Repeats", "3");
 	my $ret;
 
 	my $cmd = $a[0];
@@ -228,7 +228,7 @@ sub SD_Jaro_Set($$$@) {
 				@addGroups = split / /, $addGroups;
 				foreach (@addGroups){
 					$_ =~ s/:\d.*//g;
-					$ret.=" $_:up,stop,down,shade,learn,updown";
+					$ret.=" $_:up,stop,down";
 				}
 			}
 		} else {
@@ -270,6 +270,7 @@ sub SD_Jaro_Set($$$@) {
 
 	return "ERROR: no value, set Attributes MasterMSB please!" if ($MasterMSB eq "");
 	return "ERROR: no value, set Attributes MasterLSB please!" if ($MasterLSB eq "");
+	return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
 	return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");
 
 	return "ERROR: your command $cmd is not support! (no decimal)" if ($ret =~ /^\d/);
@@ -289,20 +290,35 @@ sub SD_Jaro_Set($$$@) {
 			push(@channels,$channel);
 			$button = $cmd2;
 			$buttonbits = $buttons{$cmd2};
-			Log3 $name, 4, "$ioname: SD_Jaro_Set - v1 -> one channel via setlist | button=$button buttonbits=$buttonbits channel=$channel\n";
+			Log3 $name, 4, "$ioname: SD_Jaro_Set - v1 -> one channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
 		### MULTI channel set | multi -> up 1,3
 		} elsif ("@standard_commands" =~ /$cmd/) {
-			@channels = split /,/, $cmd2;
+			$button = $cmd;
+			$buttonbits = $buttons{$a[0]};
+
+			if ( grep( /[$cmd2]:/, $addGroups ) ) {
+				Log3 $name, 4, "$ioname: SD_Jaro_Set - v2 -> group on setlist (not modified) | button=$button buttonbits=$buttonbits channel=$cmd2";
+				my @channel_from_addGroups = split(" ", $addGroups);
+				foreach my $found (@channel_from_addGroups){
+					if ($found =~ /^$cmd2:/) {
+						Log3 $name, 4, "$ioname: SD_Jaro_Set - v2 -> group on setlist (not modified) | found $cmd in $found";
+						$found =~ s/$cmd2\://g;
+						@channels = split(",", $found);
+						$channel = $channels[0];
+						last;
+					}
+				}
+				Log3 $name, 4, "$ioname: SD_Jaro_Set - v2 -> group on setlist (modified)     | button=$button buttonbits=$buttonbits channel=$channel";
+			} else {
+				@channels = split /,/, $cmd2;			
+				$channel = $channels[0];
+				Log3 $name, 4, "$ioname: SD_Jaro_Set - v2 -> multi channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
+			}
 
 			### check channel support or not
 			foreach (@channels){
 				return "ERROR: channel $_ is not support! (check2 failed)" if($_ < 1 || $_ > 16);
 			}
-
-			$channel = $channels[0];
-			$button = $cmd;
-			$buttonbits = $buttons{$a[0]};
-			Log3 $name, 4, "$ioname: SD_Jaro_Set - v2 -> multi channel via setlist | button=$button buttonbits=$buttonbits channel=$channel\n";
 		### addgroup set | multi -> kitchen 1,3 via setlist or UI
 		} else {
 			$button = $cmd2;
@@ -324,10 +340,10 @@ sub SD_Jaro_Set($$$@) {
 						last;
 					}
 				} 
-				Log3 $name, 4, "$ioname: SD_Jaro_Set - v3 -> group on setlist (modified)     | button=$button buttonbits=$buttonbits channel=$channel\n";
+				Log3 $name, 4, "$ioname: SD_Jaro_Set - v3 -> group on setlist (modified)     | button=$button buttonbits=$buttonbits channel=$channel";
 			## cmd=2,4 cmd2=stop
 			} else {
-				Log3 $name, 4, "$ioname: SD_Jaro_Set - v4 -> group on UI icon | button=$button buttonbits=$buttonbits channel=$channel\n";
+				Log3 $name, 4, "$ioname: SD_Jaro_Set - v4 -> group on UI icon | button=$button buttonbits=$buttonbits channel=$channel";
 			}
 		}
 
@@ -407,7 +423,7 @@ sub SD_Jaro_Set($$$@) {
 		Log3 $name, 5, "$ioname: SD_Jaro_Set - bits (send split)         = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Jaro_Set - bits (send)               = $bits";
 		Log3 $name, 4, "$ioname: SD_Jaro_Set - sendMSG                   = $msg";
-		Log3 $name, 4, "######## DEBUG SET - END ########\n";
+		Log3 $name, 4, "######## DEBUG SET - END ########";
 
 		IOWrite($hash, 'sendMsg', $msg);
 		Log3 $name, 3, "$ioname: $name set $cmd $cmd2";
@@ -535,7 +551,7 @@ sub SD_Jaro_Parse($$) {
 	my $bitData = unpack("B$blen", pack("H$hlen", $rawData));
 	
 	my $encrypted = 1;
-	my $info = "Please input MasterMSB and MasterLSB Key!";
+	my $info = "Please input KeeLoq_NLF, MasterMSB and MasterLSB Key!";
 	my $state;
 
 	## CD287247200065F100 ##
@@ -589,12 +605,13 @@ sub SD_Jaro_Parse($$) {
 	my $name = $hash->{NAME};
 	my $MasterMSB = AttrVal($name, "MasterMSB", "");
 	my $MasterLSB = AttrVal($name, "MasterLSB", "");
+	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	my $UI = AttrVal($name, "UI", "Mehrzeilig");
 	
 	$hash->{lastMSG} = $rawData;
 	$hash->{bitMSG} = $bitData;
 	
-	if ($MasterMSB ne "" && $MasterLSB ne "") {
+	if ($MasterMSB ne "" && $MasterLSB ne "" && $KeeLoq_NLF ne "") {
 		$encrypted = 0;
 		$info = "none";
 	}
@@ -776,7 +793,7 @@ sub SD_Jaro_Parse($$) {
 	readingsBulkUpdate($hash, "serial_receive", $serialWithoutCh, 0);
 	readingsBulkUpdate($hash, "state", $state);
 	readingsBulkUpdate($hash, "user_modus", $modus);
-	readingsBulkUpdate($hash, "user_info", $info) if ($info ne "none");
+	readingsBulkUpdate($hash, "user_info", $info);
 	
 	readingsBulkUpdate($hash, "LastAction_Channel_".sprintf ("%02s",$channel), $button) if ($group_value eq "no");
 	if ($group_value ne "no" && $group_value ne "< 9") {
@@ -796,7 +813,6 @@ sub SD_Jaro_Undef($$) {
 	my ($hash, $name) = @_;
 	delete($modules{SD_Jaro}{defptr}{$hash->{DEF}}) if($hash && $hash->{DEF});
 	delete($modules{SD_Jaro}{defptr}{ioname}) if (exists $modules{SD_Jaro}{defptr}{ioname});
-
 	return undef;
 }
 
@@ -863,7 +879,7 @@ sub SD_Jaro_attr2html($@) {
 			my $grpName = $grpInfo[0];
 			$html.= "<tr><td>";
 			$html.= $grpName."</td>";
-			$html.= SD_Jaro_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, $ShowShade, $ShowLearn);
+			$html.= SD_Jaro_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, 0, 0);
 			$html.= "</tr>";
 		}
 		
@@ -1008,10 +1024,9 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 
 <a name="SD_Jaro"></a>
 <h3>SD_Jaro</h3>
-<ul>Das SD_JARO Modul simuliert eine Jarolift Fernbedienung zur Steuerung anlernbarer Jarolift TDEF-Funk-Motoren für Rollläden und Markisen.<br>
-	Jarolift wird über das Keeloq Verfahren betrieben. Zur De- und Encodierung des Signals werden die beiden Keys MasterLSB und MasterMSB benötigt.<br>
-	Die beiden Keys sind entweder über Reverseengineering oder über die Suchfunktion diverser Suchmaschinen ermittelbar und müssen in die beiden entsprechenden Attribute eingetragen werden.<br><br>
-	Bei der Bedienung eines Motors mit einer anderen Fernbedienung wird der Status an das fhem-Device übergeben.<br>
+<ul>Das SD_JARO Modul simuliert eine Jarolift Fernbedienung zur Steuerung anlernbarer Jarolift TDEF-Funk-Motoren für Rollläden und Markisen. Dieses Modul wurde nach Vorlage des Bastelbudenbuben Projektes gefertigt.<br>
+	Zur De- und Encodierung des Signals werden Keys benötigt welche via Attribut gesetzt werden müssen! Ohne Schl&uuml;ssel kann man das Modul zum empfangen der unverschl&uuml;sselten Daten nutzen.<br><br>
+	Bei der Bedienung eines Motors mit einer anderen Fernbedienung wird der Status an das fhem-Device &uuml;bergeben.<br>
 	Das angelegte Device wird mit der Serial der Fernbedienung angelegt. In dem Device wird der Zustand angezeigt und erst nach setzen des Attributes Serial_send kann man Motoren steuern nach erneutem anlernen.<br><br><br>
 
 	<b>Define</b><br>
@@ -1047,16 +1062,16 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 	<b>Attribute</b><br><br>
 	<ul>
 		<li><a name="addGroups"><b>addGroups</b></a><br>
-		Gruppen in der Anzeige hinzufügen. <Gruppenname>:<ch1>,<ch2>
-		Beispiel: Nordseite:1,2,3 Südseite:4,5,6</li>
+		Gruppen in der Anzeige hinzufügen. &lt;Gruppenname&gt;:&lt;ch1&gt;,&lt;ch2&gt;<br>
+		<i>Beispiel:</i> Nordseite:1,2,3 Südseite:4,5,6</li>
 		<br>
 		<li><a name="ChannelFixed"><b>ChannelFixed</b></a><br>
 		Auswahl des fix eingestellten Kanals.
 		</li>
 		<br>
 		<li><a name="ChannelNames"><b>ChannelNames</b></a><br>
-		Beschriftung der einzelnen Kanäle anpassen. Kommagetrennte Werte.
-		Beispiel: Küche,Wohnen,Schlafen,Kinderzimmer
+		Beschriftung der einzelnen Kanäle anpassen. Kommagetrennte Werte.<br>
+		<i>Beispiel:</i> Küche,Wohnen,Schlafen,Kinderzimmer
 		</li>
 		<br>
 		<li><a name="Channels"><b>Channels</b></a><br>
@@ -1064,23 +1079,28 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 		Um nur Gruppen anzuzeigen, Channels:0 und addGroups setzen. Der Wert Channels:0 wird nur akzeptiert wenn addGroups definiert sind.
 		</li>
 		<br>
+		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
+		Key zur De- und Encodierung. Die Angabe erfolgt hexadezimal, 8 stellig.<br>
+		<i>Beispiel:</i> 0xaaaaaaaa
+		</li>
+		<br>
 		<li><a name="MasterLSB"><b>MasterLSB</b></a><br>
-		Key zur De- und Encodierung des Keeloq Rolling Codes. Die Angabe erfolgt hexadezimal, 8 stellig.
-		Beispiel: 0xaaaaaaaa
+		Key zur De- und Encodierung des Keeloq Rolling Codes. Die Angabe erfolgt hexadezimal, 8 stellig.<br>
+		<i>Beispiel:</i> 0xbbbbbbbb
 		</li>
 		<br>
 		<li><a name="MasterMSB"><b>MasterMSB</b></a><br>
-		Key zur De- und Encodierung des Keeloq Rolling Codes. Die Angabe erfolgt hexadezimal, 8 stellig.
-		Beispiel: 0xbbbbbbbb
+		Key zur De- und Encodierung des Keeloq Rolling Codes. Die Angabe erfolgt hexadezimal, 8 stellig.<br>
+		<i>Beispiel:</i> 0xcccccccc
 		</li>
 		<br>
 		<li><a name="Repeats"><b>Repeats</b></a><br>
-		Text ...
+		Mit diesem Attribut kann angepasst werden, wie viele Wiederholungen sendet werden. (Standard 3)
 		</li>
 		<br>
 		<li><a name="Serial_send"><b>Serial_send</b></a><br>
 		Eine 8-stellige Serialnummer zum Senden. Sie MUSS eindeutig im ganzen System sein. OHNE Attribut Serial_send erh&auml;lt der User keine Setlist --> nur Empfang m&ouml;glich!<br>
-		Beispiel: 123456
+		<i>Beispiel:</i> 12345678
 		</li>
 		<br>
 		<li><a name="ShowIcons"><b>ShowIcons</b></a><br>
@@ -1096,7 +1116,7 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 		</li>
 		<br>
 		<li><a name="UI"><b>UI</b></a><br>
-		Anzeigeart in FHEM (Standard:Mehrzeilig)
+		Anzeigeart (UserInterface) in FHEM (Standard:Mehrzeilig)
 		<br>
 		<ul><li>Mehrzeilig:<br>
 		Ausgewählte Anzahl an Kanälen wird Tabellarisch statt des STATE-Icons angezeigt</li>
