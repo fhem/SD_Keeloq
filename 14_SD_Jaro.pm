@@ -1,5 +1,5 @@
 #######################################################################################################################################################
-# $Id: 14_SD_Jaro.pm 32 2019-01-31 12:00:00 v3.3.3-dev_05.12. $
+# $Id: 14_SD_Jaro.pm 32 2019-02-04 12:00:00 v3.3.3-dev_05.12. $
 #   
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for JAROLIFT devices.
@@ -55,7 +55,7 @@ my %channels = (
 
 my @standard_commands = ("up","stop","down","shade","learn","updown");
 my @addGroups;
-my $KeeLoq_NLF = "";
+my $KeeLoq_NLF;
 
 #####################################
 sub SD_Jaro_Initialize() {
@@ -121,7 +121,7 @@ sub SD_Jaro_Attr(@) {
 			}
 			
 			if ($attrName eq "addGroups") {
-				return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_-äÄüÜöÖ:,\s]+$/s);			# kann ggf optimiert werden
+				return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_\-äÄüÜöÖ:,\s]+[^,.:\D]$/s);
 				SD_Jaro_translate($attrValue);
 				$attr{$name}{addGroups} = $attrValue;
 			}
@@ -132,12 +132,8 @@ sub SD_Jaro_Attr(@) {
 				$attr{$name}{ChannelNames} = $attrValue;
 			}
 			
-			if ($attrName eq "MasterLSB") {
-				return "ERROR: wrong $attrName key format! [only in hex format | example: 0x23ac34]" if not ($attrValue =~ /^0x[a-fA-F0-9]+$/s);
-			}
-			
-			if ($attrName eq "MasterMSB") {
-				return "ERROR: wrong $attrName key format! [only in hex format | example: 0x23ac34]" if not ($attrValue =~ /^0x[a-fA-F0-9]+$/s);
+			if ($attrName eq "MasterLSB" || $attrName eq "MasterMSB" || $attrName eq "KeeLoq_NLF") {
+				return "ERROR: wrong $attrName key format! [only in hex format | example: 0x23ac34de]" if not ($attrValue =~ /^0x[a-fA-F0-9]{8}+$/s);
 			}
 			
 			if ($attrName eq "Serial_send") {
@@ -275,7 +271,7 @@ sub SD_Jaro_Set($$$@) {
 
 	return "ERROR: your command $cmd is not support! (no decimal)" if ($ret =~ /^\d/);
 	return "ERROR: your command $cmd is not support! (not in list)" if ($ret !~ /$cmd/ && $addGroups eq "");
-	return "ERROR: your command $cmd is not support! (not in list)" if ($ret !~ /$cmd2/ && $addGroups ne "");
+	return "ERROR: your command $cmd2 is not support! (not in list)" if ($ret !~ /$cmd2/ && $addGroups ne "");
 
 	if ($cmd ne "?") {
 		Log3 $name, 4, "######## DEBUG SET - START ########";
@@ -380,15 +376,15 @@ sub SD_Jaro_Set($$$@) {
 		my $zaehler = ReadingsVal($name, "counter_send", 0);
 		$zaehler++;
 		my $keylow = $DeviceKey | 0x20000000;
-		my $device_key_lsb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB));	# verified
+		my $device_key_lsb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
 		$keylow = $DeviceKey | 0x60000000;
-		my $device_key_msb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB));	# verified
+		my $device_key_msb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
 
 		### KEELOQ
 		my $disc = $channelpart1."0000".$channels{$channel};	# Hopcode										# verified
 	
 		my $result = (SD_Jaro_bin2dec($disc) << 16) | $zaehler;														# verified
-		my $encoded = SD_Jaro_encrypt($result, $device_key_msb, $device_key_lsb);					# verified
+		my $encoded = SD_Jaro_encrypt($result, $device_key_msb, $device_key_lsb,$name);		# verified
 
 		### Zusammenführen
 		my $bits = reverse (sprintf("%032b", $encoded)).reverse($channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($channelpart2);
@@ -475,11 +471,14 @@ sub SD_Jaro_translate($) {
 }
 
 ###################################
-sub SD_Jaro_encrypt($$$){
+sub SD_Jaro_encrypt($$$$){
 	my $x = shift;
 	my $_keyHigh = shift;
 	my $_keyLow = shift;
-
+	my $name = shift;
+	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
+	$KeeLoq_NLF = oct($KeeLoq_NLF);
+	
 	my $r = 0;
 	my $index = 0;
 	my $keyBitVal = 0;
@@ -501,11 +500,14 @@ sub SD_Jaro_encrypt($$$){
 }
 
 ###################################
-sub SD_Jaro_decrypt($$$){
+sub SD_Jaro_decrypt($$$$){
 	my $x = shift;
 	my $_keyHigh = shift;
 	my $_keyLow = shift;
-
+	my $name = shift;
+	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
+	$KeeLoq_NLF = oct($KeeLoq_NLF);
+	
 	my $r = 0;
 	my $index = 0;
 	my $keyBitVal = 0;
@@ -696,15 +698,15 @@ sub SD_Jaro_Parse($$) {
 		my $keylow = $serial | 0x20000000;
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - decrypts (1)                         = $keylow";
 	
-		my $rx_device_key_lsb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB));
+		my $rx_device_key_lsb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB), $name);
 		$keylow =  $serial | 0x60000000;
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - decrypts (2)                         = $keylow";
 	
-		my $rx_device_key_msb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB));
+		my $rx_device_key_msb = SD_Jaro_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - rx_device_key_lsb                    = $rx_device_key_lsb";
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - rx_device_key_msb                    = $rx_device_key_msb";
 	
-		$Decoded = SD_Jaro_decrypt($Hopcode_decr, $rx_device_key_msb, $rx_device_key_lsb);
+		$Decoded = SD_Jaro_decrypt($Hopcode_decr, $rx_device_key_msb, $rx_device_key_lsb,$name);
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - Decoded (HopCode,MSB,LSB)            = $Decoded";
 		$Decoded = SD_Jaro_dec2bin($Decoded);
 		Log3 $name, 5, "$ioname: SD_Jaro_Parse - Decoded (bin)                        = $Decoded\n";
@@ -785,8 +787,6 @@ sub SD_Jaro_Parse($$) {
 	readingsBulkUpdate($hash, "button", $button);
 	readingsBulkUpdate($hash, "channel", $channel);
 	readingsBulkUpdate($hash, "DDSelected", "ch".$channel) if ($UI eq "Einzeilig");		# to jump receive value in combobox if a other value select before receive
-	#readingsBulkUpdate($hash, "group_1-8", $channelpart1);
-	#readingsBulkUpdate($hash, "group_9-16", $channelpart2);
 	readingsBulkUpdate($hash, "channel_control", $group_value);
 	readingsBulkUpdate($hash, "counter_receive", $countervalue_decr);
 	readingsBulkUpdate($hash, "last_digits", $last_digits);
@@ -818,7 +818,7 @@ sub SD_Jaro_Undef($$) {
 
 #####################################
 sub SD_Jaro_summaryFn($$$$) {
-	my ($FW_wname, $d, $room, $pageHash) = @_; # pageHash is set for summaryFn.
+	my ($FW_wname, $d, $room, $pageHash) = @_;										# pageHash is set for summaryFn.
 	my $hash   = $defs{$d};
 	my $name = $hash->{NAME};
 	
@@ -865,12 +865,21 @@ sub SD_Jaro_attr2html($@) {
 
   ### Mehrzeilig ###
   if ($UI eq "Mehrzeilig") {
-		$html = "<div><table class=\"block wide\">"; 
-		foreach my $rownr (1..$Channels) {
-			$html.= "<tr><td>";
-			$html.= $ChName[$rownr-1]."</td>";
-			$html.= SD_Jaro_attr2htmlButtons("ch$rownr", $name, $ShowIcons, $ShowShade, $ShowLearn);
-			$html.= "</tr>";
+		if (not exists $attr{$name}{ChannelFixed}) {
+			$html = "<div><table class=\"block wide\">"; 
+			foreach my $rownr (1..$Channels) {
+				$html.= "<tr><td>";
+				$html.= $ChName[$rownr-1]."</td>";
+				$html.= SD_Jaro_attr2htmlButtons("ch$rownr", $name, $ShowIcons, $ShowShade, $ShowLearn);
+				$html.= "</tr>";
+			}
+		} else {
+				$html = "<div><table class=\"block wide\">";
+				$html.= "<tr><td>";
+				my $ChannelNum = $ChannelFixed =~ s/ch//r;
+				$html.= $ChName[$ChannelNum-1]."</td>";
+				$html.= SD_Jaro_attr2htmlButtons("ch$ChannelNum", $name, $ShowIcons, $ShowShade, $ShowLearn);
+				$html.= "</tr>";
 		}
 
 		### Gruppen hinzu
@@ -1080,7 +1089,7 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 		</li>
 		<br>
 		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
-		Key zur De- und Encodierung. Die Angabe erfolgt hexadezimal, 8 stellig.<br>
+		Key zur De- und Encodierung. Die Angabe erfolgt hexadezimal, 10 stellig.<br>
 		<i>Beispiel:</i> 0xaaaaaaaa
 		</li>
 		<br>
