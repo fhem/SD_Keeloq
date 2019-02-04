@@ -1135,7 +1135,30 @@ sub SD_Jaro_attr2htmlButtons($$$$$) {
 		Es wird nichts angezeigt. (Nur über SET-Befehle steuerbar).
 		</li></ul>
 	</ul>
-	<br>
+	<br><br>
+	<b>Generierte Readings</b><br><br>
+	<ul>
+	<li>_LastAction_Channel_xx<br>
+	Zuletzt ausgef&uuml;hrte Aktion des Kanals.</li>
+	<li>button<br>
+	Gedrückter Knopf an der Fernbedienung oder im FHEM Device.</li>
+	<li>channel<br>
+	Zu steuernder Kanal.</li>
+	<li>channel_control<br>
+	Bei mehreren angesteuerten Kan&auml;len, entnehmbare Kan&auml;le, sonst "no".</li>
+	<li>counter_receive<br>
+	Zähler des Empfangsbefehles</li>
+	<li>counter_send<br>
+	Zähler des Sendebefehles.</li>
+	<li>last_digits<br>
+	... Text</li>
+	<li>serial_receive<br>
+	Seriennummer des empfangen Ger&auml;tes.</li>
+	<li>user_info<br>
+	Informationstext für den Benutzer. Es werden Tips und Handlungen ausgegeben.</li>
+	<li>user_modus<br>
+	Information über den Devicestatus (all_functions: es kann mit dem Device empfangen und gesendet werden | limited_functions: es kann nur empfangen werden)</li>
+	</ul>
 </ul>
 
 =end html_DE
