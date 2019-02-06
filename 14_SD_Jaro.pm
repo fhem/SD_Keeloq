@@ -108,8 +108,6 @@ sub SD_JARO_Define() {
 	my $ioname = $modules{SD_JARO}{defptr}{ioname} if (exists $modules{SD_JARO}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
 
-  $modules{SD_JARO}{defptr}{$a[2]." ".$a[3]} = $hash;
-
 	$attr{$name}{UI} = "aus" if( not defined( $attr{$name}{UI} ) );
 	
 
@@ -656,12 +654,11 @@ sub SD_JARO_Parse($$) {
 	$serialWithoutCh = oct( "0b$serialWithoutCh" );
 	my $devicedef = $serialWithoutCh;																			### Serial without last nibble, fix at device at every channel
 	$modules{SD_JARO}{defptr}{ioname} = $ioname;
-
-  my $def = $modules{SD_JARO}{defptr}{$devicedef};
+  my $def = $modules{SD_JARO}{defptr}{$devicedef." ".$typ};
   
 	if(!$def) {
     Log3 $iohash, 2, "SD_JARO_Parse Unknown device $typ with Code $devicedef detected, please define (rawdate=$rawData)";
-    return "UNDEFINED SD_JARO_".$devicedef." SD_JARO $devicedef"." ".$typ;
+    return "UNDEFINED SD_JARO_".$devicedef." SD_JARO ".$devicedef." ".$typ;
   }
 
 	my $hash = $def;
@@ -1196,8 +1193,8 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 
 	<b>Define</b><br>
 	<ul><code>define &lt;NAME&gt; SD_JARO &lt;Serial&gt; &lt;Typ&gt;</code><br><br>
-	Beispiel: define SD_JARO_Device1 SD_JARO 12345678 JaroLift<br>
-	Beispiel: define SD_JARO_Device2 SD_JARO 123456 Roto
+	Beispiele: <ul><li>define SD_JARO_Device1 SD_JARO 12345678 JaroLift</li>
+	<li>define SD_JARO_Device2 SD_JARO 123456 Roto</li></ul>
 	</ul><br><br>
 
 	<b>Set</b><br>
