@@ -921,14 +921,14 @@ sub SD_JARO_Parse($$) {
 	
 	if ($typ eq "JaroLift") {
 		if ($group_value eq "no") {
-			$state = "receive single control"
+			$state = "receive $button on single control"
 		} elsif ($group_value eq "< 9") {
-			$state = "receive single control or group control"
+			$state = "receive $button on single control or group control"
 		} else {
-			$state = "receive group control"
+			$state = "receive $button group control"
 		}
 	} elsif ($typ eq "Roto") {
-		$state = "receive"
+		$state = "receive $button"
 	}
 	
 	readingsBeginUpdate($hash);
