@@ -77,7 +77,7 @@ sub SD_JARO_Initialize() {
   $hash->{SetFn}				= "SD_JARO_Set";
   $hash->{ParseFn}			= "SD_JARO_Parse";
   $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
-													"UI:Mehrzeilig,Einzeilig,aus ChannelFixed:ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
+													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
 													"addGroups Serial_send ".$readingFnAttributes;
   $hash->{FW_summaryFn}	= "SD_JARO_summaryFn";          # displays html instead of status icon in fhemweb room-view
 }
@@ -107,9 +107,6 @@ sub SD_JARO_Define() {
 	$modules{SD_JARO}{defptr}{$hash->{DEF}} = $hash;
 	my $ioname = $modules{SD_JARO}{defptr}{ioname} if (exists $modules{SD_JARO}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
-
-	$attr{$name}{UI} = "aus" if( not defined( $attr{$name}{UI} ) );
-	
 
 	AssignIoPort($hash, $iodevice);
 	return undef;
@@ -434,16 +431,7 @@ sub SD_JARO_Set($$$@) {
 		Log3 $name, 5, "$ioname: SD_JARO_Set - Counter                   = $counter_send";
 		Log3 $name, 5, "$ioname: SD_JARO_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
 
-		my $binsplit;
-		for my $i(0..71){
-			$binsplit.= substr($bits,$i,1);
-			if (($i+1) % 8 == 0 && $i < 33) {
-				$binsplit.= " ";
-			}
-			if ($i == 35 || $i == 59 || $i == 63) {
-				$binsplit.= " ";
-			}
-		}
+		my $binsplit = SD_JARO_binsplit_JaroLift($bits);
 
 		Log3 $name, 5, "$ioname: SD_JARO_Set                                                   encoded     <- | ->     decrypts";
 		Log3 $name, 5, "$ioname: SD_JARO_Set                               Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
@@ -459,7 +447,7 @@ sub SD_JARO_Set($$$@) {
 		readingsBulkUpdate($hash, "button", $button, 1);
 		readingsBulkUpdate($hash, "channel", $channel, 1);
 		readingsBulkUpdate($hash, "counter_send", $counter_send, 1);
-		readingsBulkUpdate($hash, "state", "send", 1);
+		readingsBulkUpdate($hash, "state", "send $button", 1);
 
 		my $group_value;
 		foreach (@channels) {
@@ -577,7 +565,7 @@ sub SD_JARO_Parse($$) {
 	my ($iohash, $msg) = @_;
 	my $ioname = $iohash->{NAME};
 	my ($protocol,$rawData) = split("#",$msg);
-	$protocol=~ s/^P(\d+)/$1/; # extract protocol
+	$protocol=~ s/^P(\d+)/$1/; 										# extract protocol
 	my $hlen = length($rawData);
 	my $blen = $hlen * 4;
 	my $bitData = unpack("B$blen", pack("H$hlen", $rawData));
@@ -678,32 +666,31 @@ sub SD_JARO_Parse($$) {
 
 	Log3 $name, 4, "$ioname: SD_JARO_Parse device $typ with rawData=$rawData, hlen=$hlen";
 
-	my $bit0to7;		# JaroLift only
-	my $bit8to15;		# JaroLift only
-	my $bit64to71;	# JaroLift only
-	my $bit0to15;		# Roto only
-	my $bit16to27;	# Roto only
-	my $bit28to31;	# Roto only
-	my $VLOW;				# Roto only
-	my $RPT;				# Roto only
+	### JaroLift only ###
+	my $bit0to7;
+	my $bit8to15;
+	my $bit64to71;
+	my $group_value;
+	my $group_value8_15;
+	my $channel;
+	my $channel_bin;
+
+	### Roto only ###
+	my $bit0to15;
+	my $bit16to27;
+	my $bit28to31;
+	my $VLOW;
+	my $RPT;
 	
-	if ($typ eq "JaroLift") {
-		($bit0to7) = @_ = ( reverse (substr ($bitData , 0 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
-		($bit8to15) = @_ = ( reverse (substr ($bitData , 8 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
-		$bit64to71 = reverse (substr ($bitData , 64 , 8));
-	}
-	
+	## together ##
+	my $buttonbits;
+	my $binsplit;
 	my ($counter) = @_ = ( reverse (substr ($bitData , 16 , 16)) , "encrypted" )[$encrypted];		# without MasterMSB | MasterLSB encrypted
 	my ($modus) = @_ = ( "all_functions" , "only_limited" )[$encrypted];												# modus read for user
 	
 	my $serial = reverse (substr ($bitData , 32 , 28));																					# 28bit serial
 	my $button = reverse (substr ($bitData , 60 , 4));																					# 4bit button same JaroLift & Roto
 	
-	my $group_value;																																						# JaroLift only
-	my $group_value8_15;																																				# JaroLift only
-	my $channel;																																								# JaroLift only
-	my $channel_bin;																																						# JaroLift only
-
 	Log3 $name, 5, "######## DEBUG PARSE - START ########";
 
 	if (AttrVal($name, "verbose", "5") == 5) {
@@ -715,18 +702,12 @@ sub SD_JARO_Parse($$) {
 		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = $bitData\n";
 	}
 	
-	my $buttonbits;
-	my $binsplit;
 	if($typ eq "JaroLift") {	## for JaroLift Debug
-		for my $i(0..71){
-			$binsplit.= substr($bitData,$i,1);
-			if (($i+1) % 8 == 0 && $i < 32) {
-				$binsplit.= " ";
-			}
-			if ($i == 35 || $i == 59 || $i == 63) {
-				$binsplit.= " ";
-			}
-		}
+		($bit0to7) = @_ = ( reverse (substr ($bitData , 0 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
+		($bit8to15) = @_ = ( reverse (substr ($bitData , 8 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
+		$bit64to71 = reverse (substr ($bitData , 64 , 8));
+		
+		$binsplit = SD_JARO_binsplit_JaroLift($bitData);
 
 		Log3 $name, 5, "$ioname: SD_JARO_Parse - typ = $typ";
 		Log3 $name, 5, "$ioname: SD_JARO_Parse                                 encoded     <- | ->     decrypts";
@@ -760,16 +741,8 @@ sub SD_JARO_Parse($$) {
 		$VLOW = reverse (substr ($bitData , 64 , 1));
 		$RPT = reverse (substr ($bitData , 65 , 1));	
 	
-		for my $i(0..65){
-			$binsplit.= substr($bitData,$i,1);
-			if (($i+1) % 16 == 0 && $i < 27) {
-				$binsplit.= " ";
-			}
-			if ($i == 27 || $i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65) {
-				$binsplit.= " ";
-			}
-		}
-
+		my $binsplit = SD_JARO_binsplit_Roto($bitData);
+		
 		Log3 $name, 5, "$ioname: SD_JARO_Parse - typ = $typ";
 		Log3 $name, 5, "$ioname: SD_JARO_Parse                                encoded     <- | ->     decrypts";
 		Log3 $name, 5, "$ioname: SD_JARO_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
@@ -799,7 +772,7 @@ sub SD_JARO_Parse($$) {
 		if ($typ eq "JaroLift") {
 			$Hopcode = $bit0to7.$bit8to15.$counter;		
 		} elsif ($typ eq "Roto") {
-		$Hopcode = $bit0to15.$bit16to27.$bit28to31;		
+			$Hopcode = $bit0to15.$bit16to27.$bit28to31;		
 		}
 
 		$Hopcode = reverse $Hopcode;																									# invert
@@ -871,6 +844,14 @@ sub SD_JARO_Parse($$) {
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - last_digits (bin)                    = ".substr($Decoded, 8, 8)." (only 4 bits ".substr($Decoded, 12, 4)." = decrypts ch reversed ".reverse (substr ($bitData , 32 , 4)).")";
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - last_digits (channel from encoding)  = $bit8to15";
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - countervalue (receive)               = $counter_decr\n";
+		
+			if ($group_value eq "no") {
+				$state = "receive $button on single control"
+			} elsif ($group_value eq "< 9") {
+				$state = "receive $button on single control or group control"
+			} else {
+				$state = "receive $button group control"
+			}
 		}
 		
 		if ($typ eq "Roto") {
@@ -890,10 +871,12 @@ sub SD_JARO_Parse($$) {
 			Log3 $name, 5, "$ioname: SD_JARO_Parse                                             sync counter |discriminat.| bt";
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - Decoded (bin split)                  = $Decoded_split\n";
 			Log3 $name, 5, "######## DEBUG only with LSB & MSB Keys ########";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (bits)		      = $bit0to15_decr";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (dez) 		      = $counter_decr";
+			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (bits)	          = $bit0to15_decr";
+			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (dez) 	          = $counter_decr";
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - discrimination                       = $bit16to27";
 			Log3 $name, 5, "$ioname: SD_JARO_Parse - button (in encoded part)             = $bit28to31_decr = $buttonbits ???";
+			
+			$state = "receive $button"
 		}
 	}
 	###### DECODE END ######
@@ -919,18 +902,7 @@ sub SD_JARO_Parse($$) {
 	Log3 $name, 5, "$ioname: SD_JARO_Parse - user_info                            = $info";
 	Log3 $name, 5, "######## DEBUG END ########\n";
 	
-	if ($typ eq "JaroLift") {
-		if ($group_value eq "no") {
-			$state = "receive $button on single control"
-		} elsif ($group_value eq "< 9") {
-			$state = "receive $button on single control or group control"
-		} else {
-			$state = "receive $button group control"
-		}
-	} elsif ($typ eq "Roto") {
-		$state = "receive $button"
-	}
-	
+
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "button", $button);
 	readingsBulkUpdate($hash, "channel", $channel);
@@ -970,6 +942,40 @@ sub SD_JARO_Undef($$) {
 }
 
 #####################################
+sub SD_JARO_binsplit_JaroLift($) {
+	my $bits = shift;
+	my $binsplit;
+
+	for my $i(0..71){
+		$binsplit.= substr($bits,$i,1);
+		if (($i+1) % 8 == 0 && $i < 32) {
+			$binsplit.= " ";
+		}
+		if ($i == 35 || $i == 59 || $i == 63) {
+			$binsplit.= " ";
+		}
+	}
+	return $binsplit;
+}
+
+#####################################
+sub SD_JARO_binsplit_Roto($) {
+	my $bits = shift;
+	my $binsplit;
+
+	for my $i(0..65){
+		$binsplit.= substr($bits,$i,1);
+		if (($i+1) % 16 == 0 && $i < 27) {
+			$binsplit.= " ";
+		}
+		if ($i == 27 || $i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65) {
+			$binsplit.= " ";
+		}
+	}
+	return $binsplit;
+}
+
+#####################################
 sub SD_JARO_summaryFn($$$$) {
 	my ($FW_wname, $d, $room, $pageHash) = @_;										# pageHash is set for summaryFn.
 	my $hash   = $defs{$d};
@@ -990,7 +996,8 @@ sub SD_JARO_attr2html($@) {
 	my $ShowShade = AttrVal($name, "ShowShade", 1);
   my $ShowIcons = AttrVal($name, "ShowIcons", 1);
   my $ShowLearn = AttrVal($name, "ShowLearn", 1);
-  my $UI = AttrVal($name, "UI", "Mehrzeilig");
+  my $UI = AttrVal($name, "UI", "aus");
+	my $Serial_send = AttrVal($name, "Serial_send", "");
 	
 	my @groups = split / /, $addGroups;														# split define groupnames
 	my @grpInfo;																									# array of name and channels of group | name:channels
@@ -999,7 +1006,7 @@ sub SD_JARO_attr2html($@) {
 
 
 	### without UI
-  if ($UI eq "aus") {
+  if ($UI eq "aus" || $Serial_send eq "") {
 		return;
   }
   
@@ -1279,7 +1286,7 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 		</li>
 		<br>
 		<li><a name="UI"><b>UI</b></a><br>
-		Anzeigeart (UserInterface) in FHEM (Standard:Mehrzeilig)
+		Anzeigeart (UserInterface) in FHEM (Standard:aus)
 		<br>
 		<ul><li>Mehrzeilig:<br>
 		Ausgewählte Anzahl an Kanälen wird Tabellarisch statt des STATE-Icons angezeigt</li>
