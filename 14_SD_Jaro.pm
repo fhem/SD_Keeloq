@@ -31,8 +31,8 @@ my %jaro_buttons = (
 	"stop"			=>	"0100",
 	"down"			=>	"0010",
 	"learn"			=>	"0001",
-	"shade"			=>	"1010",
-	"updown"		=>	"0101"
+	"shade"			=>	"0101", #Diesen Code gibt es so nicht?
+	"updown"		=>	"1010"
 );
 
 my %jaro_channels = (
