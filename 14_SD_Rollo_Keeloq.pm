@@ -31,8 +31,8 @@ my %jaro_buttons = (
 	"stop"				=>	"0100",
 	"down"				=>	"0010",
 	"learn"				=>	"0001",
-	"shade"				=>	"", # 20x stop	(stop with 20x repeats)
-	"shade_learn"	=>	"",	# 4x stop		(stop 4x push)
+	"shade"				=>	"0101", # 20x stop	(stop with 20x repeats)
+	"shade_learn"	=>	"",			# 4x stop		(stop 4x push)
 	"updown"			=>	"1010"
 );
 
