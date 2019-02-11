@@ -1,5 +1,5 @@
 #######################################################################################################################################################
-# $Id: 14_SD_JARO.pm 32 2019-02-05 12:00:00 v3.3.3-dev_05.12. $
+# $Id: 14_SD_Rollo_Keeloq.pm 32 2019-02-11 12:00:00 v3.3.3-dev_05.12. $
 #   
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for JAROLIFT devices.
@@ -12,7 +12,7 @@
 #######################################################################################################################################################
 # !!! ToDo´s !!!
 #		- UI komplett durchtesten
-#		- SD_JARO_Set -> lt. https://wiki.fhem.de/wiki/DevelopmentModuleIntro -> unknown argument [Parameter] choose one of [Liste möglicher Optionen]
+#		- SD_Rollo_Keeloq_Set -> lt. https://wiki.fhem.de/wiki/DevelopmentModuleIntro -> unknown argument [Parameter] choose one of [Liste möglicher Optionen]
 #		- Statuswechsel nach 60-90sek. automatisch nach verfahren?
 #######################################################################################################################################################
 
@@ -22,17 +22,18 @@ package main;
 use strict;
 use warnings;
 use POSIX;
-use List::Util qw(any);				# for any function
+#use List::Util qw(any);				# for any function
 use Data::Dumper qw (Dumper);
 
 my %jaro_buttons = (
 	# keys(model) => values
-	"up"				=>	"1000",
-	"stop"			=>	"0100",
-	"down"			=>	"0010",
-	"learn"			=>	"0001",
-	"shade"			=>	"1010",
-	"updown"		=>	"0101"
+	"up"					=>	"1000",
+	"stop"				=>	"0100",
+	"down"				=>	"0010",
+	"learn"				=>	"0001",
+	"shade"				=>	"", # 20x stop	(stop with 20x repeats)
+	"shade_learn"	=>	"",	# 4x stop		(stop 4x push)
+	"updown"			=>	"1010"
 );
 
 my %jaro_channels = (
@@ -62,33 +63,33 @@ my %roto_buttons = (
 	"stop"	=>	"0001"
 );
 
-my @jaro_commands_standard = ("up","stop","down","shade","learn","updown");
+my @jaro_commands_standard = ("up","stop","down","learn","shade","shade_learn","updown");
 my @jaro_addGroups;
 
 my $KeeLoq_NLF;
 
 #####################################
-sub SD_JARO_Initialize() {
+sub SD_Rollo_Keeloq_Initialize() {
   my ($hash) = @_;
   $hash->{Match}				= "^P(?:87|88)#.*";
-	$hash->{DefFn}				= "SD_JARO_Define";
-  $hash->{UndefFn}			= "SD_JARO_Undef";
-  $hash->{AttrFn}				= "SD_JARO_Attr";
-  $hash->{SetFn}				= "SD_JARO_Set";
-  $hash->{ParseFn}			= "SD_JARO_Parse";
+	$hash->{DefFn}				= "SD_Rollo_Keeloq_Define";
+  $hash->{UndefFn}			= "SD_Rollo_Keeloq_Undef";
+  $hash->{AttrFn}				= "SD_Rollo_Keeloq_Attr";
+  $hash->{SetFn}				= "SD_Rollo_Keeloq_Set";
+  $hash->{ParseFn}			= "SD_Rollo_Keeloq_Parse";
   $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
-													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
-													"addGroups Serial_send ".$readingFnAttributes;
-  $hash->{FW_summaryFn}	= "SD_JARO_summaryFn";          # displays html instead of status icon in fhemweb room-view
+													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
+													"addGroups Serial_send LearnVer:old,new".$readingFnAttributes;
+  $hash->{FW_summaryFn}	= "SD_Rollo_Keeloq_summaryFn";          # displays html instead of status icon in fhemweb room-view
 }
 
 #####################################
-sub SD_JARO_Define() {
+sub SD_Rollo_Keeloq_Define() {
   my ($hash, $def) = @_;
   my @a = split("[ \t][ \t]*", $def);
 
   # Argument            				   0	     1       2      3          4
-	return " wrong syntax: define <name> SD_JARO <Serial> <Typ> <optional IODEV> " if(int(@a) < 4 || int(@a) > 5);
+	return " wrong syntax: define <name> SD_Rollo_Keeloq <Serial> <Typ> <optional IODEV> " if(int(@a) < 4 || int(@a) > 5);
 	return "ERROR: your <Typ> is wrong! Please use JaroLift or Roto." if not ($a[3] eq "JaroLift" || $a[3] eq "Roto");
 	
 	if ($a[3] eq "JaroLift" && not ($a[2] =~ /^[0-9]+$/s && ($a[2] <= 16777215 || $a[2] >= 0 ))) {
@@ -104,8 +105,8 @@ sub SD_JARO_Define() {
 	my $typ = $a[3] if($a[3]);
 	my $iodevice = $a[4] if($a[4]);
 
-	$modules{SD_JARO}{defptr}{$hash->{DEF}} = $hash;
-	my $ioname = $modules{SD_JARO}{defptr}{ioname} if (exists $modules{SD_JARO}{defptr}{ioname} && not $iodevice);
+	$modules{SD_Rollo_Keeloq}{defptr}{$hash->{DEF}} = $hash;
+	my $ioname = $modules{SD_Rollo_Keeloq}{defptr}{ioname} if (exists $modules{SD_Rollo_Keeloq}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
 
 	AssignIoPort($hash, $iodevice);
@@ -113,7 +114,7 @@ sub SD_JARO_Define() {
 }
 
 #####################################
-sub SD_JARO_Attr(@) {
+sub SD_Rollo_Keeloq_Attr(@) {
 	my ($cmd, $name, $attrName, $attrValue) = @_;
 	my $hash = $defs{$name};
 	my $addGroups = AttrVal($name, "addGroups", "");
@@ -137,13 +138,13 @@ sub SD_JARO_Attr(@) {
 			if ($typ eq "JaroLift") {
 				if ($attrName eq "addGroups") {
 					return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_\-äÄüÜöÖ:,\s]+[^,.:\D]$/s);
-					SD_JARO_translate($attrValue);
+					SD_Rollo_Keeloq_translate($attrValue);
 					$attr{$name}{addGroups} = $attrValue;
 				}
 				
 				if ($attrName eq "ChannelNames") {
 					return "ERROR: wrong $attrName syntax! [only a-z | umlauts | numbers | , | _ | - | ]\nexample: South,North" if not ($attrValue =~ /\A[a-zA-Z\d,_-äÄüÜöÖ\s]+\Z/s);
-					SD_JARO_translate($attrValue);
+					SD_Rollo_Keeloq_translate($attrValue);
 					$attr{$name}{ChannelNames} = $attrValue;
 				}
 				
@@ -204,15 +205,15 @@ sub SD_JARO_Attr(@) {
 			}
 		}
 
-		Log3 $name, 3, "SD_JARO: $cmd attr $attrName to $attrValue" if (defined $attrValue);
-		Log3 $name, 3, "SD_JARO: $cmd attr $attrName" if (not defined $attrValue);
+		Log3 $name, 3, "SD_Rollo_Keeloq: $cmd attr $attrName to $attrValue" if (defined $attrValue);
+		Log3 $name, 3, "SD_Rollo_Keeloq: $cmd attr $attrName" if (not defined $attrValue);
 	}
 
 	return undef;
 }
 
 #####################################
-sub SD_JARO_Set($$$@) {
+sub SD_Rollo_Keeloq_Set($$$@) {
 	my ( $hash, $name, @a ) = @_;
 	my $ioname = $hash->{IODev}{NAME};
 	my $addGroups = AttrVal($name, "addGroups", "");
@@ -241,40 +242,22 @@ sub SD_JARO_Set($$$@) {
 
 	### only with Serial_send create setlist for user
 	if ($Serial_send ne "" && $MasterMSB ne "" && $MasterLSB ne "" && $KeeLoq_NLF ne "") {
-		### all channels without ChannelFixed ###
-		if ($ChannelFixed eq "none") {
-			foreach my $rownr (1..$Channels) {
-				$ret.=" ch".$rownr.":up,stop,down,shade,learn,updown";
-			}
-
-			## for addGroups if no Channels
-			if ($addGroups ne "") {
-				@jaro_addGroups = split / /, $addGroups;
-				foreach (@jaro_addGroups){
-					$_ =~ s/:\d.*//g;
-					$ret.=" $_:up,stop,down";
-				}
-			}
-		} else {
-			$ret.=" $ChannelFixed:up,stop,down,shade,learn,updown";
-		}
 
 		### only all options without ChannelFixed ###
 		if ($ChannelFixed eq "none") {
 			my $ret_part2;
-			foreach my $rownr (1..$Channels) {
-				$ret_part2.= "$rownr,";
-			}
-
 			## for addGroups if no Channels
 			if ($addGroups ne "") {
+				@jaro_addGroups = split / /, $addGroups;
 				foreach (@jaro_addGroups){
 					$_ =~ s/:\d.*//g;
 					$ret_part2.= "$_,";
 				}
 			}
 
-			#Log3 $name, 4, "$ioname: SD_JARO_Set - returnlist part2  = $ret_part2" if ($cmd ne "?");
+			foreach my $rownr (1..$Channels) {
+				$ret_part2.= "$rownr,";
+			}
 
 			$ret_part2 = substr($ret_part2,0,-1);		# cut last ,
 			$ret.=" up:multiple,".$ret_part2;
@@ -283,11 +266,18 @@ sub SD_JARO_Set($$$@) {
 			$ret.=" shade:multiple,".$ret_part2;
 			$ret.=" learn:multiple,".$ret_part2;
 			$ret.=" updown:multiple,".$ret_part2;
+		} else {
+			$ret.=" up:$ChannelFixed";
+			$ret.=" stop:$ChannelFixed";
+			$ret.=" down:$ChannelFixed";
+			$ret.=" shade:$ChannelFixed";
+			$ret.=" learn:$ChannelFixed";
+			$ret.=" updown:$ChannelFixed";
 		}
 
-		#Log3 $name, 4, "$ioname: SD_JARO_Set - returnlist finish = $ret" if ($cmd ne "?");
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - returnlist finish = $ret" if ($cmd ne "?");
 	}
-	
+
   return $ret if ( $a[0] eq "?");
 	return "ERROR: no set value specified!" if(int(@a) <= 1);
 	return "ERROR: too much set value specified!" if(int(@a) > 2);
@@ -297,81 +287,95 @@ sub SD_JARO_Set($$$@) {
 	return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
 	return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");
 
-	return "ERROR: your command $cmd is not support! (no decimal)" if ($ret =~ /^\d/);
-	return "ERROR: your command $cmd is not support! (not in list)" if ($ret !~ /$cmd/ && $addGroups eq "");
-	return "ERROR: your command $cmd2 is not support! (not in list)" if ($ret !~ /$cmd2/ && $addGroups ne "");
+	my @channel_split = split(",", $cmd2);	
+	
+	if (scalar @channel_split == 1) {
+		if ($cmd2 =~ /^\d$/ && ($cmd2 < 1 || $cmd2 > 16) ) {
+			return "ERROR: your channel $cmd2 is not support! (not in list - failed 1)";
+		}
+	} elsif (scalar @channel_split > 1) {
+		foreach (@channel_split){
+			if ($_ !~ /^\d/) {
+				if ( not grep( /$_/, $addGroups)) {
+					return "ERROR: one channel $cmd2 is not support! (not in list - failed 2)";
+				}
+			} else {
+				return "ERROR: your channels $cmd2 are not support! (not in list - failed 3)" if ($_<1 && $_>16);			
+			}
+		}
+	}
 
 	if ($cmd ne "?") {
 		Log3 $name, 4, "######## DEBUG SET - START ########";
-		Log3 $name, 4, "$ioname: SD_JARO_Set - cmd=$cmd cmd2=$cmd2" if (defined $cmd2);
-		
+		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - cmd=$cmd cmd2=$cmd2 args cmd2=".scalar @channel_split." addGroups=$addGroups" if ($cmd ne "?" && defined $cmd2);
+
 		my @channels;
-		### ONE channel set | solo -> ch1 up
-		if ($cmd =~ /^ch\d+$/) {
-			$channel = substr($cmd, 2, (length $cmd)-2);
-			return "ERROR: channel $channel is not support! (check1 failed)" if($channel < 1 || $channel > 16);		# check channel support or not
+		my @channel_from_addGroups;
+		$button = $cmd;
+		### ToDo shade | shadelearn! ###
+		$buttonbits = $jaro_buttons{$cmd};
 
-			push(@channels,$channel);
-			$button = $cmd2;
-			$buttonbits = $jaro_buttons{$cmd2};
-			Log3 $name, 4, "$ioname: SD_JARO_Set - v1 -> one channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
-		### MULTI channel set | multi -> up 1,3
-		} elsif ("@jaro_commands_standard" =~ /$cmd/) {
-			$button = $cmd;
-			$buttonbits = $jaro_buttons{$a[0]};
-
-			if ( grep( /[$cmd2]:/, $addGroups ) ) {
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v2 -> group on setlist (not modified) | button=$button buttonbits=$buttonbits channel=$cmd2";
-				my @channel_from_addGroups = split(" ", $addGroups);
-				foreach my $found (@channel_from_addGroups){
-					if ($found =~ /^$cmd2:/) {
-						Log3 $name, 4, "$ioname: SD_JARO_Set - v2 -> group on setlist (not modified) | found $cmd in $found";
-						$found =~ s/$cmd2\://g;
-						@channels = split(",", $found);
-						$channel = $channels[0];
-						last;
-					}
+		if ($addGroups ne "") {
+			@channel_from_addGroups = split(" ", $addGroups);
+			foreach my $found (@channel_from_addGroups){
+				if ($found =~ /^$cmd2:/) {
+					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $cmd2 in addGroups";
+					$found =~ s/$cmd2\://g;
+					@channels = split(",", $found);
+					$channel = $channels[0];
+					last;
 				}
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v2 -> group on setlist (modified)     | button=$button buttonbits=$buttonbits channel=$channel";
-			} else {
-				@channels = split /,/, $cmd2;			
-				$channel = $channels[0];
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v2 -> multi channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
-			}
-
-			### check channel support or not
-			foreach (@channels){
-				return "ERROR: channel $_ is not support! (check2 failed)" if($_ < 1 || $_ > 16);
-			}
-		### addgroup set | multi -> kitchen 1,3 via setlist or UI
-		} else {
-			$button = $cmd2;
-			$buttonbits = $jaro_buttons{$cmd2};
-
-			@channels = split /,/, $cmd;
-			$channel = $channels[0];
-
-			## cmd=Bad cmd2=up
-			if ( grep( /[$channel]:/, $addGroups ) ) {
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v3 -> group on setlist (not modified) | button=$button buttonbits=$buttonbits channel=$channel";
-				my @channel_from_addGroups = split(" ", $addGroups);
-				foreach my $found (@channel_from_addGroups){
-					if ($found =~ /^$cmd:/) {
-						Log3 $name, 4, "$ioname: SD_JARO_Set - v3 -> group on setlist (not modified) | found $cmd in $found";
-						$found =~ s/$cmd\://g;
-						@channels = split(",", $found);
-						$channel = $channels[0];
-						last;
-					}
-				} 
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v3 -> group on setlist (modified)     | button=$button buttonbits=$buttonbits channel=$channel";
-			## cmd=2,4 cmd2=stop
-			} else {
-				Log3 $name, 4, "$ioname: SD_JARO_Set - v4 -> group on UI icon | button=$button buttonbits=$buttonbits channel=$channel";
 			}
 		}
 
-		return "ERROR: No channel given!" if (scalar @channels == 0);
+		return "ERROR: command $cmd is not support!" if ( "@jaro_commands_standard" !~ /$cmd/ );
+		#return "ERROR: channel $cmd2 is not activated! you have activated $Channels Channels." if ($cmd2 > $Channels);
+
+		#### CHECK cmd ####
+		### multi control ###
+		if ( grep( /,/, $cmd2 ) ) {
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: yes";
+			my @multicontrol = split(",", $cmd2);
+			foreach my $found_multi (@multicontrol){
+				## channel ##
+				if ($found_multi =~ /^\d$/) {
+					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is channel solo";
+					push(@channels,$found_multi);
+					$channel = $multicontrol[0];
+				## group ##
+				} elsif (grep /$found_multi/, @channel_from_addGroups) {
+					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is group solo";
+					foreach my $found (@channel_from_addGroups) {
+						if ($found =~ /^$found_multi:/) {
+							Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $found_multi in addGroups";
+							$found =~ s/$found_multi\://g;
+							@channels = split(",", $found);
+							$channel = $channels[0];
+							last;
+						}
+					}
+				}
+			}
+		### single control ###
+		} else {
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: no";
+			if ($cmd2 !~ /^\d$/) {
+				## single group ##
+				if ( not grep( /$cmd2/, $addGroups ) ) {
+					return "ERROR: $cmd2 is not support!";
+				}
+				if ( grep( /$cmd2:/, $addGroups ) ) {
+					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - no numerics";
+				}
+			## single channel ##
+			} else {
+				@channels = split /,/, $cmd2;
+				$channel = $channels[0];
+			}
+		}
+		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
+		#### CHECK cmd END ####
+
 
 		### create channelpart1
 		foreach my $nr (1..8) {
@@ -396,7 +400,7 @@ sub SD_JARO_Set($$$@) {
 
 		### DeviceKey (die ersten Stellen aus der Vorage, der Rest vom Sendenen Kanal)
 		$Serial_send = sprintf ("%24b", $Serial_send);																					# verified
-		
+
 		$DeviceKey = $Serial_send.$jaro_channels{$channel};																			# verified
 		$DeviceKey = oct("0b".$DeviceKey);																											# verified
 
@@ -404,40 +408,40 @@ sub SD_JARO_Set($$$@) {
 		my $counter_send = ReadingsVal($name, "counter_send", 0);
 		$counter_send++;
 		my $keylow = $DeviceKey | 0x20000000;
-		my $device_key_lsb = SD_JARO_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
+		my $device_key_lsb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
 		$keylow = $DeviceKey | 0x60000000;
-		my $device_key_msb = SD_JARO_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
+		my $device_key_msb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
 
 		### KEELOQ
 		my $disc = $bit0to7."0000".$jaro_channels{$channel};	# Hopcode													# verified
-	
-		my $result = (SD_JARO_bin2dec($disc) << 16) | $counter_send;														# verified
-		my $encoded = SD_JARO_encrypt($result, $device_key_msb, $device_key_lsb,$name);					# verified
+
+		my $result = (SD_Rollo_Keeloq_bin2dec($disc) << 16) | $counter_send;														# verified
+		my $encoded = SD_Rollo_Keeloq_encrypt($result, $device_key_msb, $device_key_lsb,$name);				# verified
 
 		### Zusammenführen
 		my $bits = reverse (sprintf("%032b", $encoded)).reverse($jaro_channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
 		my $msg = "P87#$bits"."P#R".$Repeats;
 
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Channel                   = $channel";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - channelpart1 (Group 0-7)  = $bit0to7";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - channelpart2 (Group 8-15) = $bit64to71";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Button                    = $button";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Button_bits               = $buttonbits";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - DeviceKey                 = $DeviceKey";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Device_key_lsb            = $device_key_lsb";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Device_key_msb            = $device_key_msb";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - disc                      = $disc";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - result (decode)           = $result";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - Counter                   = $counter_send";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Channel                   = $channel";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart1 (Group 0-7)  = $bit0to7";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart2 (Group 8-15) = $bit64to71";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button                    = $button";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button_bits               = $buttonbits";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - DeviceKey                 = $DeviceKey";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_lsb            = $device_key_lsb";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_msb            = $device_key_msb";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - disc                      = $disc";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - result (decode)           = $result";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Counter                   = $counter_send";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
 
-		my $binsplit = SD_JARO_binsplit_JaroLift($bits);
+		my $binsplit = SD_Rollo_Keeloq_binsplit_JaroLift($bits);
 
-		Log3 $name, 5, "$ioname: SD_JARO_Set                                                   encoded     <- | ->     decrypts";
-		Log3 $name, 5, "$ioname: SD_JARO_Set                               Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - bits (send split)         = $binsplit";
-		Log3 $name, 5, "$ioname: SD_JARO_Set - bits (send)               = $bits";
-		Log3 $name, 4, "$ioname: SD_JARO_Set - sendMSG                   = $msg";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                                                   encoded     <- | ->     decrypts";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                               Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send split)         = $binsplit";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send)               = $bits";
+		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - sendMSG                   = $msg";
 		Log3 $name, 4, "######## DEBUG SET - END ########";
 
 		IOWrite($hash, 'sendMsg', $msg);
@@ -467,20 +471,20 @@ sub SD_JARO_Set($$$@) {
 }
 
 ###################################
-sub SD_JARO_bin2dec($) {
+sub SD_Rollo_Keeloq_bin2dec($) {
 	my $bin = shift;
 	my $dec = oct("0b" . $bin);
 	return $dec;
 }
 
 ###################################
-sub SD_JARO_dec2bin($) {
+sub SD_Rollo_Keeloq_dec2bin($) {
 	my $bin = unpack("B32", pack("N", shift));
 	return $bin;
 }
 
 ###################################
-sub SD_JARO_translate($) {
+sub SD_Rollo_Keeloq_translate($) {
 	my $text = shift;
 	my %translate = ("ä" => "&auml;", "Ä" => "&Auml;", "ü" => "&uuml;", "Ü" => "&Uuml;", "ö" => "&ouml;", "Ö" => "&Ouml;", "ß" => "&szlig;" );
 	my $keys = join ("|", keys(%translate));
@@ -489,14 +493,14 @@ sub SD_JARO_translate($) {
 }
 
 ###################################
-sub SD_JARO_encrypt($$$$){
+sub SD_Rollo_Keeloq_encrypt($$$$){
 	my $x = shift;
 	my $_keyHigh = shift;
 	my $_keyLow = shift;
 	my $name = shift;
 	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	$KeeLoq_NLF = oct($KeeLoq_NLF);
-	
+
 	my $r = 0;
 	my $index = 0;
 	my $keyBitVal = 0;
@@ -505,12 +509,12 @@ sub SD_JARO_encrypt($$$$){
 	while ($r < 528){
 		my $keyBitNo = $r & 63;
 		if ($keyBitNo < 32){
-			$keyBitVal = SD_JARO_bitRead($_keyLow, $keyBitNo);
+			$keyBitVal = SD_Rollo_Keeloq_bitRead($_keyLow, $keyBitNo);
 		} else {
-			$keyBitVal = SD_JARO_bitRead($_keyHigh, $keyBitNo - 32);
-		}		
-		$index = 1 * SD_JARO_bitRead($x,1) + 2 * SD_JARO_bitRead($x,9) + 4 * SD_JARO_bitRead($x,20) + 8 * SD_JARO_bitRead($x,26) + 16 * SD_JARO_bitRead($x,31);
-		$bitVal = SD_JARO_bitRead($x,0) ^ SD_JARO_bitRead($x, 16) ^ SD_JARO_bitRead($KeeLoq_NLF,$index) ^ $keyBitVal;
+			$keyBitVal = SD_Rollo_Keeloq_bitRead($_keyHigh, $keyBitNo - 32);
+		}
+		$index = 1 * SD_Rollo_Keeloq_bitRead($x,1) + 2 * SD_Rollo_Keeloq_bitRead($x,9) + 4 * SD_Rollo_Keeloq_bitRead($x,20) + 8 * SD_Rollo_Keeloq_bitRead($x,26) + 16 * SD_Rollo_Keeloq_bitRead($x,31);
+		$bitVal = SD_Rollo_Keeloq_bitRead($x,0) ^ SD_Rollo_Keeloq_bitRead($x, 16) ^ SD_Rollo_Keeloq_bitRead($KeeLoq_NLF,$index) ^ $keyBitVal;
 		$x = ($x >> 1 & 0xffffffff) ^ $bitVal <<31;
 		$r = $r + 1;
 	}
@@ -518,14 +522,14 @@ sub SD_JARO_encrypt($$$$){
 }
 
 ###################################
-sub SD_JARO_decrypt($$$$){
+sub SD_Rollo_Keeloq_decrypt($$$$){
 	my $x = shift;
 	my $_keyHigh = shift;
 	my $_keyLow = shift;
 	my $name = shift;
 	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	$KeeLoq_NLF = oct($KeeLoq_NLF);
-	
+
 	my $r = 0;
 	my $index = 0;
 	my $keyBitVal = 0;
@@ -535,13 +539,13 @@ sub SD_JARO_decrypt($$$$){
 		my $keyBitNo = (15-$r) & 63;
 
 		if ($keyBitNo < 32){
-			$keyBitVal = SD_JARO_bitRead($_keyLow, $keyBitNo);
+			$keyBitVal = SD_Rollo_Keeloq_bitRead($_keyLow, $keyBitNo);
 		} else {
-			$keyBitVal = SD_JARO_bitRead($_keyHigh, $keyBitNo -32);
+			$keyBitVal = SD_Rollo_Keeloq_bitRead($_keyHigh, $keyBitNo -32);
 		}
 
-		$index = 1 * SD_JARO_bitRead($x,0) + 2 * SD_JARO_bitRead($x,8) + 4 * SD_JARO_bitRead($x,19) + 8 * SD_JARO_bitRead($x,25) + 16 * SD_JARO_bitRead($x,30);
-		$bitVal = SD_JARO_bitRead($x,31) ^ SD_JARO_bitRead($x, 15) ^ SD_JARO_bitRead($KeeLoq_NLF,$index) ^ $keyBitVal;
+		$index = 1 * SD_Rollo_Keeloq_bitRead($x,0) + 2 * SD_Rollo_Keeloq_bitRead($x,8) + 4 * SD_Rollo_Keeloq_bitRead($x,19) + 8 * SD_Rollo_Keeloq_bitRead($x,25) + 16 * SD_Rollo_Keeloq_bitRead($x,30);
+		$bitVal = SD_Rollo_Keeloq_bitRead($x,31) ^ SD_Rollo_Keeloq_bitRead($x, 15) ^ SD_Rollo_Keeloq_bitRead($KeeLoq_NLF,$index) ^ $keyBitVal;
 		$x = ($x << 1 & 0xffffffff) ^ $bitVal;
 		#if ($r == 5){
 		#exit 1;
@@ -553,7 +557,7 @@ sub SD_JARO_decrypt($$$$){
 }
 
 ###################################
-sub SD_JARO_bitRead($$) {
+sub SD_Rollo_Keeloq_bitRead($$) {
 	my $wert = shift;
 	my $bit = shift;
 
@@ -561,7 +565,7 @@ sub SD_JARO_bitRead($$) {
 }
 
 ###################################
-sub SD_JARO_Parse($$) {
+sub SD_Rollo_Keeloq_Parse($$) {
 	my ($iohash, $msg) = @_;
 	my $ioname = $iohash->{NAME};
 	my ($protocol,$rawData) = split("#",$msg);
@@ -569,7 +573,7 @@ sub SD_JARO_Parse($$) {
 	my $hlen = length($rawData);
 	my $blen = $hlen * 4;
 	my $bitData = unpack("B$blen", pack("H$hlen", $rawData));
-	
+
 	my $encrypted = 1;
 	my $info = "Please input KeeLoq_NLF, MasterMSB and MasterLSB Key!";
 	my $state;
@@ -604,15 +608,15 @@ sub SD_JARO_Parse($$) {
   # 13      13           0010 0000                   0000 0000           0000 0111
   # 14      14           0100 0000                   0000 0000           0000 0111
   # 15      15           1000 0000                   0000 0000           0000 0111
-	
-	# button = 0x0; // 1000=0x8 up, 0100=0x4 stop, 0010=0x2 down, 0001=0x1 learning
+
+	# button = 0x0; // 1000=0x8 up, 0100=0x4 stop, 0010=0x2 down, 0001=0x1 learning, 0011=0x3 shade, 0110=0x6 shade_learn, 1010=0xA updown
 	# !!! There are supposedly 2 versions of the protocol? old and new !!!
-	
+
 	# http://www.bastelbudenbuben.de/2017/04/25/protokollanalyse-von-jarolift-tdef-motoren/
 	# https://github.com/madmartin/Jarolift_MQTT/wiki/About-Serials
-	
+
 	################################################################################################
-	
+
 	## Roto ##
 	## D13E68A890EAFEF20 ##
 	## 11010001001111100110100010101000100100001110101011111110111100100000 ##
@@ -630,7 +634,7 @@ sub SD_JARO_Parse($$) {
 
 	my $serialWithoutCh;
 	my $typ;
-	
+
 	if ($hlen == 17) {
 		$typ = "Roto";
 		$serialWithoutCh = reverse (substr ($bitData , 32 , 28));						# 28bit serial
@@ -641,12 +645,12 @@ sub SD_JARO_Parse($$) {
 
 	$serialWithoutCh = oct( "0b$serialWithoutCh" );
 	my $devicedef = $serialWithoutCh;																			### Serial without last nibble, fix at device at every channel
-	$modules{SD_JARO}{defptr}{ioname} = $ioname;
-  my $def = $modules{SD_JARO}{defptr}{$devicedef." ".$typ};
+	$modules{SD_Rollo_Keeloq}{defptr}{ioname} = $ioname;
+  my $def = $modules{SD_Rollo_Keeloq}{defptr}{$devicedef." ".$typ};
   
 	if(!$def) {
-    Log3 $iohash, 2, "SD_JARO_Parse Unknown device $typ with Code $devicedef detected, please define (rawdate=$rawData)";
-    return "UNDEFINED SD_JARO_".$devicedef." SD_JARO ".$devicedef." ".$typ;
+    Log3 $iohash, 2, "SD_Rollo_Keeloq_Parse Unknown device $typ with Code $devicedef detected, please define (rawdate=$rawData)";
+    return "UNDEFINED SD_Rollo_Keeloq_".$devicedef." SD_Rollo_Keeloq ".$devicedef." ".$typ;
   }
 
 	my $hash = $def;
@@ -655,16 +659,16 @@ sub SD_JARO_Parse($$) {
 	my $MasterLSB = AttrVal($name, "MasterLSB", "");
 	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	my $UI = AttrVal($name, "UI", "Mehrzeilig");
-	
+
 	$hash->{lastMSG} = $rawData;
 	$hash->{bitMSG} = $bitData;
-	
+
 	if ($MasterMSB ne "" && $MasterLSB ne "" && $KeeLoq_NLF ne "") {
 		$encrypted = 0;
 		$info = "none";
 	}
 
-	Log3 $name, 4, "$ioname: SD_JARO_Parse device $typ with rawData=$rawData, hlen=$hlen";
+	Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Parse device $typ with rawData=$rawData, hlen=$hlen";
 
 	### JaroLift only ###
 	my $bit0to7;
@@ -681,39 +685,39 @@ sub SD_JARO_Parse($$) {
 	my $bit28to31;
 	my $VLOW;
 	my $RPT;
-	
+
 	## together ##
 	my $buttonbits;
 	my $binsplit;
 	my ($counter) = @_ = ( reverse (substr ($bitData , 16 , 16)) , "encrypted" )[$encrypted];		# without MasterMSB | MasterLSB encrypted
 	my ($modus) = @_ = ( "all_functions" , "only_limited" )[$encrypted];												# modus read for user
-	
+
 	my $serial = reverse (substr ($bitData , 32 , 28));																					# 28bit serial
 	my $button = reverse (substr ($bitData , 60 , 4));																					# 4bit button same JaroLift & Roto
-	
+
 	Log3 $name, 5, "######## DEBUG PARSE - START ########";
 
 	if (AttrVal($name, "verbose", "5") == 5) {
 		if (defined $hash->{LASTInputDev}) {
 			my $LASTInputDev = $hash->{LASTInputDev};
 			my $RAWMSG_Internal = $LASTInputDev."_RAWMSG";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal};
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal};
 		}
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = $bitData\n";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = $bitData\n";
 	}
-	
+
 	if($typ eq "JaroLift") {	## for JaroLift Debug
 		($bit0to7) = @_ = ( reverse (substr ($bitData , 0 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
 		($bit8to15) = @_ = ( reverse (substr ($bitData , 8 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
 		$bit64to71 = reverse (substr ($bitData , 64 , 8));
-		
-		$binsplit = SD_JARO_binsplit_JaroLift($bitData);
 
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - typ = $typ";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse                                 encoded     <- | ->     decrypts";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse             Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = $binsplit";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = |->     must be calculated!     <-| ".reverse (substr ($bitData , 32 , 4)) ." ". reverse (substr ($bitData , 36 , 24)) ." ".$button ." ". $bit64to71;
+		$binsplit = SD_Rollo_Keeloq_binsplit_JaroLift($bitData);
+
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - typ = $typ";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse                                 encoded     <- | ->     decrypts";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse             Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = $binsplit";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = |->     must be calculated!     <-| ".reverse (substr ($bitData , 32 , 4)) ." ". reverse (substr ($bitData , 36 , 24)) ." ".$button ." ". $bit64to71;
 		
 		my @groups8_15 = split //, reverse $bit64to71;
 		foreach my $i (0..7) {																						# group - ch8-ch15
@@ -721,34 +725,34 @@ sub SD_JARO_Parse($$) {
 				$group_value.= ($i+9).",";
 			}
 		}
-	
+
 		$group_value8_15 = ($bit64to71 =~ s/(0)/$1/g);										# count 0
 		if ($group_value8_15 == 8) {
 			$group_value = "< 9";
 		}
 		$group_value = substr($group_value,0,-1) if ($group_value =~ /,$/);		# cut last ,
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - group_value_text 8-15 (1)            = $group_value\n";
-	
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - group_value_text 8-15 (1)            = $group_value\n";
+
 		($button) = grep { $jaro_buttons{$_} eq $button } keys %jaro_buttons;						# search buttontext --> buttons
 		$channel = reverse (substr ($bitData , 32 , 4));
 		($channel) = grep { $jaro_channels{$_} eq $channel } keys %jaro_channels;				# search channeltext --> channels
-	
+
 		foreach my $keys (keys %jaro_channels) {																				# search channel bits --> channels
 			$channel_bin = $jaro_channels{$keys} if ($keys eq $channel);
 		}
-	
+
 	} elsif ($typ eq "Roto") {	## for Roto Debug
 		$VLOW = reverse (substr ($bitData , 64 , 1));
 		$RPT = reverse (substr ($bitData , 65 , 1));	
-	
-		my $binsplit = SD_JARO_binsplit_Roto($bitData);
-		
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - typ = $typ";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse                                encoded     <- | ->     decrypts";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = $binsplit";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
-		
+
+		my $binsplit = SD_Rollo_Keeloq_binsplit_Roto($bitData);
+
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - typ = $typ";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse                                encoded     <- | ->     decrypts";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = $binsplit";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
+
 		$buttonbits = $button;
 		($button) = grep { $roto_buttons{$_} eq $button } keys %roto_buttons;					# search buttontext --> buttons
 		$bit0to15 = reverse (substr ($bitData , 0 , 16));
@@ -762,8 +766,8 @@ sub SD_JARO_Parse($$) {
 	my $channel_decr;
 	my $bit0to7_decr;
 	my $Decoded;
-	
-	###### DECODE ######	
+
+	###### DECODE ######
 	if ($encrypted == 0) {
 		Log3 $name, 5, "######## DEBUG PARSE - for LSB & MSB Keys ########";
 		
@@ -776,26 +780,26 @@ sub SD_JARO_Parse($$) {
 		}
 
 		$Hopcode = reverse $Hopcode;																									# invert
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - input to decode                      = $Hopcode";
-		my $Hopcode_decr = SD_JARO_bin2dec($Hopcode);
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - HopCode - decrypts                   = $Hopcode_decr";
-	
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - input to decode                      = $Hopcode";
+		my $Hopcode_decr = SD_Rollo_Keeloq_bin2dec($Hopcode);
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - HopCode - decrypts                   = $Hopcode_decr";
+
 		my $keylow = $serial | 0x20000000;
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts (1)                         = $keylow";
-	
-		my $rx_device_key_lsb = SD_JARO_decrypt($keylow, hex($MasterMSB), hex($MasterLSB), $name);
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts (1)                         = $keylow";
+
+		my $rx_device_key_lsb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB), $name);
 		$keylow =  $serial | 0x60000000;
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts (2)                         = $keylow";
-	
-		my $rx_device_key_msb = SD_JARO_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - rx_device_key_lsb                    = $rx_device_key_lsb";
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - rx_device_key_msb                    = $rx_device_key_msb";
-	
-		$Decoded = SD_JARO_decrypt($Hopcode_decr, $rx_device_key_msb, $rx_device_key_lsb,$name);
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - Decoded (HopCode,MSB,LSB)            = $Decoded";
-		$Decoded = SD_JARO_dec2bin($Decoded);
-		Log3 $name, 5, "$ioname: SD_JARO_Parse - Decoded (bin)                        = $Decoded\n";
-		
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts (2)                         = $keylow";
+
+		my $rx_device_key_msb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - rx_device_key_lsb                    = $rx_device_key_lsb";
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - rx_device_key_msb                    = $rx_device_key_msb";
+
+		$Decoded = SD_Rollo_Keeloq_decrypt($Hopcode_decr, $rx_device_key_msb, $rx_device_key_lsb,$name);
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - Decoded (HopCode,MSB,LSB)            = $Decoded";
+		$Decoded = SD_Rollo_Keeloq_dec2bin($Decoded);
+		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - Decoded (bin)                        = $Decoded\n";
+
 		if ($typ eq "JaroLift") {
 			my $Decoded_split;
 			for my $i(0..31){
@@ -804,14 +808,14 @@ sub SD_JARO_Parse($$) {
 					$Decoded_split.= " ";
 				}
 			}
-		
+
 			### Disc Group 1-8
 			$bit0to7_decr = substr($Decoded, 0, 8);
 			$bit0to7 = $bit0to7_decr;
-		
+
 			### Counter
 			$counter = substr($Decoded, 16, 16);
-			$counter_decr = SD_JARO_bin2dec($counter);
+			$counter_decr = SD_Rollo_Keeloq_bin2dec($counter);
 	
 			my $group_value0_7 = "";
 			my @groups0_7 = split //, reverse $bit0to7;
@@ -820,7 +824,7 @@ sub SD_JARO_Parse($$) {
 					$group_value0_7.= ($i+1).",";
 				}
 			}
-		
+
 			$group_value = "" if($group_value8_15 == 8 && $group_value0_7 ne "");																			# group reset text " < 9"
 			$group_value = "16" if($group_value8_15 == 8 && $group_value0_7 eq "");																		# group text "16"
 			$group_value0_7 = substr($group_value0_7,0,-1) if ($group_value0_7 =~ /,$/ && $group_value0_7 ne "");			# cut last ,
@@ -829,22 +833,22 @@ sub SD_JARO_Parse($$) {
 			$group_value = substr($group_value,1,length($group_value)-1) if ($group_value =~ /^,/);										# cut first ,
 			$group_value = substr($group_value,0,-1) if ($group_value =~ /,$/);																				# cut last ,
 			$group_value = "no" if ($group_value =~ /^\d+$/);																													# no group, only one channel
-	
+
 			### ChannelDecrypted
 			$channel_decr = substr($Decoded, 12, 4);
 			($channel_decr) = grep { $jaro_channels{$_} eq $channel_decr } keys %jaro_channels;													# search channels
 			$bit8to15 = $channel_decr;		
 
-			Log3 $name, 5, "$ioname: SD_JARO_Parse                                          Grp 0-7 |digitS/N|    counter";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - Decoded (bin split)                  = $Decoded_split\n";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse                                          Grp 0-7 |digitS/N|    counter";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - Decoded (bin split)                  = $Decoded_split\n";
 			Log3 $name, 5, "######## DEBUG only with LSB & MSB Keys ########";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - channelpart1 (group 0-7)             = $bit0to7";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - group_value_text 0-7  (2)            = $group_value0_7";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - group_value_text 0-15 (3)            = $group_value";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - last_digits (bin)                    = ".substr($Decoded, 8, 8)." (only 4 bits ".substr($Decoded, 12, 4)." = decrypts ch reversed ".reverse (substr ($bitData , 32 , 4)).")";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - last_digits (channel from encoding)  = $bit8to15";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - countervalue (receive)               = $counter_decr\n";
-		
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - channelpart1 (group 0-7)             = $bit0to7";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - group_value_text 0-7  (2)            = $group_value0_7";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - group_value_text 0-15 (3)            = $group_value";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - last_digits (bin)                    = ".substr($Decoded, 8, 8)." (only 4 bits ".substr($Decoded, 12, 4)." = decrypts ch reversed ".reverse (substr ($bitData , 32 , 4)).")";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - last_digits (channel from encoding)  = $bit8to15";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - countervalue (receive)               = $counter_decr\n";
+
 			if ($group_value eq "no") {
 				$state = "receive $button on single control"
 			} elsif ($group_value eq "< 9") {
@@ -853,7 +857,7 @@ sub SD_JARO_Parse($$) {
 				$state = "receive $button group control"
 			}
 		}
-		
+
 		if ($typ eq "Roto") {
 			my $Decoded_split;
 			for my $i(0..31){
@@ -862,46 +866,46 @@ sub SD_JARO_Parse($$) {
 					$Decoded_split.= " ";
 				}
 			}
-			
+
 			my $bit0to15_decr = substr($Decoded, 0, 16);
 			my $bit16to27_decr = substr($Decoded, 16, 12);
 			my $bit28to31_decr = substr($Decoded, 28, 4);
-			$counter_decr = SD_JARO_bin2dec($bit0to15_decr);
+			$counter_decr = SD_Rollo_Keeloq_bin2dec($bit0to15_decr);
 
-			Log3 $name, 5, "$ioname: SD_JARO_Parse                                             sync counter |discriminat.| bt";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - Decoded (bin split)                  = $Decoded_split\n";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse                                             sync counter |discriminat.| bt";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - Decoded (bin split)                  = $Decoded_split\n";
 			Log3 $name, 5, "######## DEBUG only with LSB & MSB Keys ########";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (bits)	          = $bit0to15_decr";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - sync counter (dez) 	          = $counter_decr";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - discrimination                       = $bit16to27";
-			Log3 $name, 5, "$ioname: SD_JARO_Parse - button (in encoded part)             = $bit28to31_decr = $buttonbits ???";
-			
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - sync counter (bits)	          = $bit0to15_decr";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - sync counter (dez) 	          = $counter_decr";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - discrimination                       = $bit16to27";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - button (in encoded part)             = $bit28to31_decr = $buttonbits ???";
+
 			$state = "receive $button"
 		}
 	}
 	###### DECODE END ######
-	
-	Log3 $name, 5, "######## DEBUG without LSB & MSB Keys ########";
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts button                      = $button";
 
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts ch + serial                 = $serial (at each channel changes)" if ($typ eq "JaroLift");
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts ch + serial (bin)           = ".sprintf("%028b", $serial) if ($typ eq "JaroLift");
-	
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts serial                      = $serialWithoutCh (for each channel)";
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts serial (bin)                = ".sprintf("%024b", $serialWithoutCh)." (for each channel)";
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts channel (from serial | bin) = $channel_bin" if (defined $channel_bin);
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts channel (from serial)       = $channel" if (defined $channel);
-	
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts channelpart2 (group 8-15)   = $bit64to71" if (defined $bit64to71);
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts channel_control             = $group_value" if (defined $group_value);
-	
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts Voltage LOW indicator       = $VLOW" if (defined $VLOW);
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - decrypts Repeat indicator            = $RPT" if (defined $RPT);
-	
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - user_modus                           = $modus";
-	Log3 $name, 5, "$ioname: SD_JARO_Parse - user_info                            = $info";
+	Log3 $name, 5, "######## DEBUG without LSB & MSB Keys ########";
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts button                      = $button";
+
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts ch + serial                 = $serial (at each channel changes)" if ($typ eq "JaroLift");
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts ch + serial (bin)           = ".sprintf("%028b", $serial) if ($typ eq "JaroLift");
+
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts serial                      = $serialWithoutCh (for each channel)";
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts serial (bin)                = ".sprintf("%024b", $serialWithoutCh)." (for each channel)";
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel (from serial | bin) = $channel_bin" if (defined $channel_bin);
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel (from serial)       = $channel" if (defined $channel);
+
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channelpart2 (group 8-15)   = $bit64to71" if (defined $bit64to71);
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel_control             = $group_value" if (defined $group_value);
+
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts Voltage LOW indicator       = $VLOW" if (defined $VLOW);
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts Repeat indicator            = $RPT" if (defined $RPT);
+
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - user_modus                           = $modus";
+	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - user_info                            = $info";
 	Log3 $name, 5, "######## DEBUG END ########\n";
-	
+
 
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "button", $button);
@@ -917,7 +921,7 @@ sub SD_JARO_Parse($$) {
 	readingsBulkUpdate($hash, "typ", $typ, 0);
 	readingsBulkUpdate($hash, "user_modus", $modus);
 	readingsBulkUpdate($hash, "user_info", $info);
-	
+
 	if ($typ eq "JaroLift") {
 		readingsBulkUpdate($hash, "LastAction_Channel_".sprintf ("%02s",$channel), $button) if ($group_value eq "no");
 		if ($group_value ne "no" && $group_value ne "< 9") {
@@ -927,22 +931,22 @@ sub SD_JARO_Parse($$) {
 			}
 		}
 	}
-	
+
 	readingsEndUpdate($hash, 1); 		# Notify is done by Dispatch
-	
+
 	return $name;
 }
 
 #####################################
-sub SD_JARO_Undef($$) {
+sub SD_Rollo_Keeloq_Undef($$) {
 	my ($hash, $name) = @_;
-	delete($modules{SD_JARO}{defptr}{$hash->{DEF}}) if(defined($hash->{DEF}) && defined($modules{SD_JARO}{defptr}{$hash->{DEF}}));
-	delete($modules{SD_JARO}{defptr}{ioname}) if (exists $modules{SD_JARO}{defptr}{ioname});
+	delete($modules{SD_Rollo_Keeloq}{defptr}{$hash->{DEF}}) if(defined($hash->{DEF}) && defined($modules{SD_Rollo_Keeloq}{defptr}{$hash->{DEF}}));
+	delete($modules{SD_Rollo_Keeloq}{defptr}{ioname}) if (exists $modules{SD_Rollo_Keeloq}{defptr}{ioname});
 	return undef;
 }
 
 #####################################
-sub SD_JARO_binsplit_JaroLift($) {
+sub SD_Rollo_Keeloq_binsplit_JaroLift($) {
 	my $bits = shift;
 	my $binsplit;
 
@@ -959,7 +963,7 @@ sub SD_JARO_binsplit_JaroLift($) {
 }
 
 #####################################
-sub SD_JARO_binsplit_Roto($) {
+sub SD_Rollo_Keeloq_binsplit_Roto($) {
 	my $bits = shift;
 	my $binsplit;
 
@@ -976,17 +980,17 @@ sub SD_JARO_binsplit_Roto($) {
 }
 
 #####################################
-sub SD_JARO_summaryFn($$$$) {
+sub SD_Rollo_Keeloq_summaryFn($$$$) {
 	my ($FW_wname, $d, $room, $pageHash) = @_;										# pageHash is set for summaryFn.
 	my $hash   = $defs{$d};
 	my $name = $hash->{NAME};
-	
-	return SD_JARO_attr2html($name, $hash);
+
+	return SD_Rollo_Keeloq_attr2html($name, $hash);
 }
 
 #####################################
 # Create HTML-Code
-sub SD_JARO_attr2html($@) {
+sub SD_Rollo_Keeloq_attr2html($@) {
   my ($name, $hash) = @_;
 	my $addGroups = AttrVal($name, "addGroups", "");							# groups with channels
 	my $Channels = AttrVal($name, "Channels", 1);
@@ -998,7 +1002,7 @@ sub SD_JARO_attr2html($@) {
   my $ShowLearn = AttrVal($name, "ShowLearn", 1);
   my $UI = AttrVal($name, "UI", "aus");
 	my $Serial_send = AttrVal($name, "Serial_send", "");
-	
+
 	my @groups = split / /, $addGroups;														# split define groupnames
 	my @grpInfo;																									# array of name and channels of group | name:channels
 	my $grpName;																									# name of group
@@ -1009,7 +1013,7 @@ sub SD_JARO_attr2html($@) {
   if ($UI eq "aus" || $Serial_send eq "") {
 		return;
   }
-  
+
   ### ChannelNames festlegen
   my @ChName = ();																												# name standard
 	my @ChName_alias = ();																									# alias name from attrib ChannelNames
@@ -1030,7 +1034,7 @@ sub SD_JARO_attr2html($@) {
 			foreach my $rownr (1..$Channels) {
 				$html.= "<tr><td>";
 				$html.= $ChName[$rownr-1]."</td>";
-				$html.= SD_JARO_attr2htmlButtons("ch$rownr", $name, $ShowIcons, $ShowShade, $ShowLearn);
+				$html.= SD_Rollo_Keeloq_attr2htmlButtons("$rownr", $name, $ShowIcons, $ShowShade, $ShowLearn);
 				$html.= "</tr>";
 			}
 		} else {
@@ -1038,7 +1042,7 @@ sub SD_JARO_attr2html($@) {
 				$html.= "<tr><td>";
 				my $ChannelNum = $ChannelFixed =~ s/ch//r;
 				$html.= $ChName[$ChannelNum-1]."</td>";
-				$html.= SD_JARO_attr2htmlButtons("ch$ChannelNum", $name, $ShowIcons, $ShowShade, $ShowLearn);
+				$html.= SD_Rollo_Keeloq_attr2htmlButtons("$ChannelNum", $name, $ShowIcons, $ShowShade, $ShowLearn);
 				$html.= "</tr>";
 		}
 
@@ -1048,10 +1052,10 @@ sub SD_JARO_attr2html($@) {
 			my $grpName = $grpInfo[0];
 			$html.= "<tr><td>";
 			$html.= $grpName."</td>";
-			$html.= SD_JARO_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, 0, 0);
+			$html.= SD_Rollo_Keeloq_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, 0, 0);
 			$html.= "</tr>";
 		}
-		
+
 		$html.= "</table></div>";
 		return $html;
   }
@@ -1063,7 +1067,7 @@ sub SD_JARO_attr2html($@) {
 			my $changecmd = "cmd.$name=setreading $name DDSelected ";
 			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
 			foreach my $rownr (1..$Channels) {
-				if ($DDSelected eq "ch$rownr"){
+				if ($DDSelected eq "$rownr"){
 					$html.= "<option selected value=ch".($rownr).">".($ChName[$rownr-1])."</option>";
 				} else {
 					$html.= "<option value=ch".($rownr).">".($ChName[$rownr-1])."</option>";
@@ -1082,15 +1086,14 @@ sub SD_JARO_attr2html($@) {
 			}
 
 			$html.= "</select></td>";
-			$html.= SD_JARO_attr2htmlButtons("OptionValue", $name, $ShowIcons, $ShowShade, $ShowLearn);
+			$html.= SD_Rollo_Keeloq_attr2htmlButtons("OptionValue", $name, $ShowIcons, $ShowShade, $ShowLearn);
 			$html.= "</table></div>";
 		}
 
 		### Einzeilig with attrib ChannelFixed ###
 		if (exists $attr{$name}{ChannelFixed}) {
-			my $ChannelNum = $ChannelFixed =~ s/ch//r;
-			$html = "<div><table class=\"block wide\"><tr><td>$ChName[$ChannelNum-1]</td>";
-			$html.= SD_JARO_attr2htmlButtons($ChannelFixed, $name, $ShowIcons, $ShowShade, $ShowLearn);
+			$html = "<div><table class=\"block wide\"><tr><td>$ChName[$ChannelFixed-1]</td>";
+			$html.= SD_Rollo_Keeloq_attr2htmlButtons($ChannelFixed, $name, $ShowIcons, $ShowShade, $ShowLearn);
 			$html.= "</tr></table></div>";
 		}
 
@@ -1101,15 +1104,15 @@ sub SD_JARO_attr2html($@) {
 }
 
 #####################################
-sub SD_JARO_attr2htmlButtons($$$$$) {
+sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 	my ($channel, $name, $ShowIcons, $ShowShade, $ShowLearn) = @_;
 	my $html = "";
-	
+
 	# $name    = name of device
 	# $channel = ch1 ... ch16 or channelgroup example 2,4
-	
+
 	### UP
-	my $cmd = "cmd.$name=set $name $channel up";
+	my $cmd = "cmd.$name=set $name up $channel";
 	$html.="<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Hoch</a></td>" if (!$ShowIcons);
 	if ($ShowIcons == 1){
 		my $img = FW_makeImage("fts_shutter_up");
@@ -1117,7 +1120,7 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 	}
 
 	### STOP
-	$cmd = "cmd.$name=set $name $channel stop";
+	$cmd = "cmd.$name=set $name stop $channel";
 	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Stop</a></td>" if (!$ShowIcons);
 	if ($ShowIcons == 1){
 		my $img = FW_makeImage("rc_STOP");
@@ -1125,7 +1128,7 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 	}
 
 	### DOWN
-	$cmd = "cmd.$name=set $name $channel down";
+	$cmd = "cmd.$name=set $name down $channel";
 	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Runter</a></td>" if (!$ShowIcons);
 	if ($ShowIcons == 1){
 		my $img = FW_makeImage("fts_shutter_down");
@@ -1133,7 +1136,7 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 	}
 
 	### SHADE
-	$cmd = "cmd.$name=set $name $channel shade";
+	$cmd = "cmd.$name=set $name shade $channel";
 	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Beschattung</a></td>" if (($ShowShade) && (!$ShowIcons));
 	if ($ShowIcons == 1 && $ShowShade == 1){
 		my $img = FW_makeImage("fts_shutter_shadding_run");
@@ -1141,7 +1144,7 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 	}
 
 	### LEARN
-	$cmd = "cmd.$name=set $name $channel learn";
+	$cmd = "cmd.$name=set $name learn $channel";
 	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Lernen</a></td>" if (($ShowLearn) && (!$ShowIcons));
 	if ($ShowIcons == 1 && $ShowLearn == 1){
 		my $img = FW_makeImage("fts_shutter_manual");
@@ -1164,15 +1167,15 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 
 =begin html
 
-<a name="SD_JARO"></a>
-<h3>SD_JARO</h3>
-<ul>The module SD_JARO is a <br>
+<a name="SD_Rollo_Keeloq"></a>
+<h3>SD_Rollo_Keeloq</h3>
+<ul>The module SD_Rollo_Keeloq is a <br>
 
 	<b>Define</b><br>
-	<ul><code>define &lt;NAME&gt; SD_JARO &lt;Device-ID&gt;</code><br><br>
+	<ul><code>define &lt;NAME&gt; SD_Rollo_Keeloq &lt;Device-ID&gt;</code><br><br>
 	<u>examples:</u>
 		<ul>
-		define &lt;NAME&gt; SD_JARO 12345678<br>
+		define &lt;NAME&gt; SD_Rollo_Keeloq 12345678<br>
 		</ul>	</ul><br><br>
 
 	<b>Set</b><br>
@@ -1191,23 +1194,28 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 =end html
 =begin html_DE
 
-<a name="SD_JARO"></a>
-<h3>SD_JARO</h3>
-<ul>Das SD_JARO Modul simuliert eine Fernbedienung zur Steuerung anlernbarer Jarolift oder Roto TDEF-Funk-Motoren für Rollläden und Markisen. Dieses Modul wurde nach Vorlage des Bastelbudenbuben Projektes gefertigt. 
+<a name="SD_Rollo_Keeloq"></a>
+<h3>SD_Rollo_Keeloq</h3>
+<ul>Das SD_Rollo_Keeloq Modul simuliert eine Fernbedienung zur Steuerung anlernbarer Jarolift oder Roto TDEF-Funk-Motoren für Rollläden und Markisen. Dieses Modul wurde nach Vorlage des Bastelbudenbuben Projektes gefertigt. 
 	Zur De- und Encodierung des Signals werden Keys benötigt welche via Attribut gesetzt werden müssen! Ohne Schl&uuml;ssel kann man das Modul zum empfangen der unverschl&uuml;sselten Daten nutzen.<br><br>
 	Bei der Bedienung eines Motors mit einer anderen Fernbedienung wird der Status an das fhem-Device &uuml;bergeben.<br>
 	Das angelegte Device wird mit der Serial der Fernbedienung angelegt. In dem Device wird der Zustand angezeigt und erst nach setzen des Attributes Serial_send kann man Motoren steuern nach erneutem anlernen.<br><br><br>
 
 	<b>Define</b><br>
-	<ul><code>define &lt;NAME&gt; SD_JARO &lt;Serial&gt; &lt;Typ&gt;</code><br><br>
-	Beispiele: <ul><li>define SD_JARO_Device1 SD_JARO 12345678 JaroLift</li>
-	<li>define SD_JARO_Device2 SD_JARO 123456 Roto</li></ul>
+	<ul><code>define &lt;NAME&gt; SD_Rollo_Keeloq &lt;Serial&gt; &lt;Typ&gt;</code><br><br>
+	Beispiele: <ul><li>define SD_Rollo_Keeloq_Device1 SD_Rollo_Keeloq 12345678 JaroLift</li>
+	<li>define SD_Rollo_Keeloq_Device2 SD_Rollo_Keeloq 123456 Roto</li></ul>
 	</ul><br><br>
 
 	<b>Set</b><br>
 	<ul><code>set &lt;NAME&gt; &lt;command&gt;</code><br><br>
-	<b>NAME:</b> ch1-16<br><br>
-	<b>command:</b><br>
+	<i><b>NAME:</b> ch1-16 <u>oder</u> Gruppenname<br></i><br>
+	<ul><b>ODER</b></ul>
+	<br>
+	<code>set &lt;command&gt; &lt;NAME&gt;</code><br><br>
+	<i><b>NAME:</b> 1-16<br></i></ul><br>
+	
+	<ul><b>command:</b><br>
 		<ul>
 			<li><b>learn</b><br>
 			Anlernen eines Motors. Motor dazu nach Herstellerangeben in den Anlernmodus versetzen.<br>
@@ -1252,6 +1260,10 @@ sub SD_JARO_attr2htmlButtons($$$$$) {
 		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
 		Key zur De- und Encodierung. Die Angabe erfolgt hexadezimal, 8 stellig + f&uuml;hrend mit 0x.<br>
 		<i>Beispiel:</i> 0xaaaaaaaa
+		</li>
+		<br>
+		<li><a name="LearnVer"><b>LearnVer</b></a><br>
+		Anlernvariante, da diese sich je nach alter der Geräte unterscheidet. (Standard old)<br>
 		</li>
 		<br>
 		<li><a name="MasterLSB"><b>MasterLSB</b></a><br>
