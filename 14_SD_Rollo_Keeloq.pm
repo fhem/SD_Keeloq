@@ -1208,12 +1208,8 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 	</ul><br><br>
 
 	<b>Set</b><br>
-	<ul><code>set &lt;NAME&gt; &lt;command&gt;</code><br><br>
-	<i><b>NAME:</b> ch1-16 <u>oder</u> Gruppenname<br></i><br>
-	<ul><b>ODER</b></ul>
-	<br>
-	<code>set &lt;command&gt; &lt;NAME&gt;</code><br><br>
-	<i><b>NAME:</b> 1-16<br></i></ul><br>
+	<ul><code>set &lt;command&gt; &lt;NAME&gt;</code><br><br>
+	<i><b>NAME:</b>1-16</i> oder angelegte <i>addGroups</i></ul><br>
 	
 	<ul><b>command:</b><br>
 		<ul>
@@ -1231,7 +1227,8 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 			Rolladen in Beschattungsposition bringen. wird nicht von allen Empfängern unterst&uuml;tzt.<br>
 			<br>
 		</ul>
-	Beispiel: set ch3 down
+	Beispiele: <ul>set down 7<br>
+	set down Nordseite</ul>
 	</ul><br><br>
 	
 	<b>Get</b><br>
