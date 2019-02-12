@@ -1,5 +1,5 @@
 #######################################################################################################################################################
-# $Id: 14_SD_Rollo_Keeloq.pm 32 2019-02-12 12:00:00 v3.3.3-dev_05.12. $
+# $Id: 14_SD_Rollo_Keeloq.pm 32 2019-02-13 12:00:00 v3.3.3-dev_05.12. $
 #
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for JAROLIFT devices.
@@ -26,12 +26,12 @@ use Data::Dumper qw (Dumper);
 
 my %jaro_buttons = (
 	"up"					=>	"1000",
-	"stop"				=>	"0100",
+	"stop"				=>	"0100",	# new LearnVersion (2)
 	"down"				=>	"0010",
-	"learn"				=>	"0001",
+	"learn"				=>	"0001",	# old LearnVersion
 	"shade"				=>	"0101", # 20x stop	(stop with 20x repeats)
 	"shade_learn"	=>	"",			# 4x stop		(stop 4x push)
-	"updown"			=>	"1010"
+	"updown"			=>	"1010"	# new LearnVersion (1)
 );
 
 my %jaro_channels = (
@@ -74,7 +74,7 @@ sub SD_Rollo_Keeloq_Initialize() {
   $hash->{ParseFn}			= "SD_Rollo_Keeloq_Parse";
   $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
 													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
-													"addGroups Serial_send LearnVer:old,new ".$readingFnAttributes;
+													"addGroups Serial_send LearnVersion:old,new ".$readingFnAttributes;
   $hash->{FW_summaryFn}	= "SD_Rollo_Keeloq_summaryFn";          # displays html instead of status icon in fhemweb room-view
 }
 
@@ -190,7 +190,7 @@ sub SD_Rollo_Keeloq_Attr(@) {
 			if ($attrName eq "IODev") {
 				my @sender = ();
 				foreach my $d (sort keys %defs) {
-					if(defined($defs{$d}) && $defs{$d}{TYPE} eq "SIGNALduino" && $defs{$d}{DeviceName} ne "none" && $defs{$d}{DevState} eq "initialized") {
+					if(defined($defs{$d}) && $defs{$d}{TYPE} eq "SIGNALduino" && $defs{$d}{DevState} eq "initialized") {
 						push(@sender,$d);
 					}
 				}
@@ -239,8 +239,7 @@ sub SD_Rollo_Keeloq_Attr(@) {
 #####################################
 sub SD_Rollo_Keeloq_Set($$$@) {
 	my ( $hash, $name, @a ) = @_;
-	my $ioname = $hash->{IODev}{NAME} if (exists $hash->{IODev}{NAME});
-	my $ioname = "No I/O"  if (not exists $hash->{IODev}{NAME});					# for testsystem if no IO
+	my $ioname = $hash->{IODev}{NAME};
 	my $addGroups = AttrVal($name, "addGroups", "");
 	my $Channels = AttrVal($name, "Channels", 1);
 	my $ChannelFixed = AttrVal($name, "ChannelFixed", "none");
@@ -249,6 +248,8 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 	$KeeLoq_NLF = AttrVal($name, "KeeLoq_NLF", "");
 	my $Serial_send = AttrVal($name, "Serial_send", "");
 	my $Repeats = AttrVal($name, "Repeats", "3");
+	my $learning = AttrVal($name, "LearnVersion", "old");
+	my $typ = ReadingsVal($name, "typ", "");
 	my $ret;
 
 	my $cmd = $a[0];
@@ -260,6 +261,7 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 	my $buttonbits;			#	Buttonbits
 	my $button;					#	Buttontext
 
+	
 	### Einzeilig mit Auswahlfeld ###
 	if ($a[0] eq "OptionValue") {
 		$a[0] = $hash->{READINGS}{DDSelected}{VAL};
@@ -299,8 +301,6 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 			$ret.=" learn:$ChannelFixed";
 			$ret.=" updown:$ChannelFixed";
 		}
-
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - returnlist finish = $ret" if ($cmd ne "?");
 	}
 
 	return $ret if ( $a[0] eq "?");
@@ -331,166 +331,187 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 	}
 
 	if ($cmd ne "?") {
+		return "ERROR: you have no I/O DEV defined! Please define one device to send or dummy." if (AttrVal($name, "IODev", "") eq "");
 		Log3 $name, 4, "######## DEBUG SET - START ########";
 		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - cmd=$cmd cmd2=$cmd2 args cmd2=".scalar @channel_split." addGroups=$addGroups" if ($cmd ne "?" && defined $cmd2);
 
 		my @channels;
 		my @channel_from_addGroups;
-		$button = $cmd;
-		### ToDo shade | shadelearn! ###
-		$buttonbits = $jaro_buttons{$cmd};
+		my $foreachCount;
+		
+		if ($learning ne "old" && $cmd eq "learn") {
+			$foreachCount = 2;	# LearnVersion new
+		} else {
+			$foreachCount = 1;	# LearnVersion old
+		}
 
-		if ($addGroups ne "") {
-			@channel_from_addGroups = split(" ", $addGroups);
-			foreach my $found (@channel_from_addGroups){
-				if ($found =~ /^$cmd2:/) {
-					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $cmd2 in addGroups";
-					$found =~ s/$cmd2\://g;
-					@channels = split(",", $found);
-					$channel = $channels[0];
-					last;
-				}
+		foreach my $i (1..$foreachCount) {
+			if ($learning ne "old" && $cmd eq "learn" && $i == 1) {
+				$cmd = "updown";
+			} elsif ($learning ne "old" && $cmd eq "updown" && $i == 2) {
+				$cmd = "stop";
+				$bit0to7 = undef;
+				$bit64to71 = undef;
+				$DeviceKey = undef;
+				$Serial_send = AttrVal($name, "Serial_send", "");
 			}
-		}
 
-		return "ERROR: command $cmd is not support!" if ( "@jaro_commands_standard" !~ /$cmd/ );
-		if ($cmd2 =~ /^\d$/) {
-			return "ERROR: channel $cmd2 is not activated! you have activated $Channels Channels." if ($cmd2 > $Channels);
-		}
-
-		#### CHECK cmd ####
-		### multi control ###
-		if ( grep( /,/, $cmd2 ) ) {
-			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: yes";
-			my @multicontrol = split(",", $cmd2);
-			foreach my $found_multi (@multicontrol){
-				## channel ##
-				if ($found_multi =~ /^\d$/) {
-					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is channel solo";
-					push(@channels,$found_multi);
-					$channel = $multicontrol[0];
-				## group ##
-				} elsif (grep /$found_multi/, @channel_from_addGroups) {
-					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is group solo";
-					foreach my $found (@channel_from_addGroups) {
-						if ($found =~ /^$found_multi:/) {
-							Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $found_multi in addGroups";
-							$found =~ s/$found_multi\://g;
-							@channels = split(",", $found);
-							$channel = $channels[0];
-							last;
-						}
+			$button = $cmd;
+			$buttonbits = $jaro_buttons{$cmd};
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - LearnVersion=$learning Loop=$i" if ((defined $cmd2 && $learning eq "old") || (defined $cmd2 && $learning eq "new"));
+			
+			if ($addGroups ne "") {
+				@channel_from_addGroups = split(" ", $addGroups);
+				foreach my $found (@channel_from_addGroups){
+					if ($found =~ /^$cmd2:/) {
+						Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $cmd2 in addGroups";
+						$found =~ s/$cmd2\://g;
+						@channels = split(",", $found);
+						$channel = $channels[0];
+						last;
 					}
 				}
 			}
-		### single control ###
-		} else {
-			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: no";
-			if ($cmd2 !~ /^\d$/) {
-				## single group ##
-				if ( not grep( /$cmd2/, $addGroups ) ) {
-					return "ERROR: $cmd2 is not support!";
+
+			return "ERROR: command $cmd is not support!" if ( "@jaro_commands_standard" !~ /$cmd/ );
+			if ($cmd2 =~ /^\d$/) {
+				return "ERROR: channel $cmd2 is not activated! you have activated $Channels Channels." if ($cmd2 > $Channels);
+			}
+
+			#### CHECK cmd ####
+			### multi control ###
+			if ( grep( /,/, $cmd2 ) ) {
+				Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: yes";
+				my @multicontrol = split(",", $cmd2);
+				foreach my $found_multi (@multicontrol){
+					## channel ##
+					if ($found_multi =~ /^\d$/) {
+						Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is channel solo";
+						push(@channels,$found_multi);
+						$channel = $multicontrol[0];
+					## group ##
+					} elsif (grep /$found_multi/, @channel_from_addGroups) {
+						Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - selection $found_multi is group solo";
+						foreach my $found (@channel_from_addGroups) {
+							if ($found =~ /^$found_multi:/) {
+								Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, group for setlist -> found $found_multi in addGroups";
+								$found =~ s/$found_multi\://g;
+								@channels = split(",", $found);
+								$channel = $channels[0];
+								last;
+							}
+						}
+					}
 				}
-				if ( grep( /$cmd2:/, $addGroups ) ) {
-					Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - no numerics";
+			### single control ###
+			} else {
+				Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, multiple selection: no";
+				if ($cmd2 !~ /^\d$/) {
+					## single group ##
+					if ( not grep( /$cmd2/, $addGroups ) ) {
+						return "ERROR: $cmd2 is not support!";
+					}
+					if ( grep( /$cmd2:/, $addGroups ) ) {
+						Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - no numerics";
+					}
+				## single channel ##
+				} else {
+					@channels = split /,/, $cmd2;
+					$channel = $channels[0];
 				}
-			## single channel ##
-			} else {
-				@channels = split /,/, $cmd2;
-				$channel = $channels[0];
 			}
-		}
-		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
-		#### CHECK cmd END ####
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - channel via setlist | button=$button buttonbits=$buttonbits channel=$channel";
+			#### CHECK cmd END ####
 
 
-		### create channelpart1
-		foreach my $nr (1..8) {
-			if ( grep( /^$nr$/, @channels ) ) {
-				$bit0to7.="1";
-			} else {
-				$bit0to7.="0";
+			### create channelpart1
+			foreach my $nr (1..8) {
+				if ( grep( /^$nr$/, @channels ) ) {
+					$bit0to7.="1";
+				} else {
+					$bit0to7.="0";
+				}
 			}
-		}
 
-		### create channelpart2
-		foreach my $nr (9..16) {
-			if ( grep( /^$nr$/, @channels ) ) {
-				$bit64to71.="1";
-			} else {
-				$bit64to71.="0";
+			### create channelpart2
+			foreach my $nr (9..16) {
+				if ( grep( /^$nr$/, @channels ) ) {
+					$bit64to71.="1";
+				} else {
+					$bit64to71.="0";
+				}
 			}
+
+			$bit0to7 = reverse $bit0to7;
+			$bit64to71 = reverse $bit64to71;		# JaroLift only
+
+			### DeviceKey (die ersten Stellen aus der Vorage, der Rest vom Sendenen Kanal)
+			$Serial_send = sprintf ("%24b", $Serial_send);																					# verified
+
+			$DeviceKey = $Serial_send.$jaro_channels{$channel};																			# verified
+			$DeviceKey = oct("0b".$DeviceKey);																											# verified
+
+			######## KEYGEN #############
+			my $counter_send = ReadingsVal($name, "counter_send", 0);
+			$counter_send++;
+			my $keylow = $DeviceKey | 0x20000000;
+			my $device_key_lsb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
+			$keylow = $DeviceKey | 0x60000000;
+			my $device_key_msb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
+
+			### KEELOQ
+			my $disc = $bit0to7."0000".$jaro_channels{$channel};	# Hopcode																	# verified
+
+			my $result = (SD_Rollo_Keeloq_bin2dec($disc) << 16) | $counter_send;														# verified
+			my $encoded = SD_Rollo_Keeloq_encrypt($result, $device_key_msb, $device_key_lsb,$name);					# verified
+
+			### Zusammenführen
+			my $bits = reverse (sprintf("%032b", $encoded)).reverse($jaro_channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
+			my $msg = "P87#$bits"."P#R".$Repeats;
+
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Channel                   = $channel";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart1 (Group 0-7)  = $bit0to7";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart2 (Group 8-15) = $bit64to71";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button                    = $button";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button_bits               = $buttonbits";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - DeviceKey                 = $DeviceKey";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_lsb            = $device_key_lsb";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_msb            = $device_key_msb";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - disc                      = $disc";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - result (decode)           = $result";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Counter                   = $counter_send";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
+
+			my $binsplit = SD_Rollo_Keeloq_binsplit_JaroLift($bits);
+
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                                                   encoded     <- | ->     decrypts";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                               Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send split)         = $binsplit";
+			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send)               = $bits";
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - sendMSG                   = $msg";
+			Log3 $name, 4, "######## DEBUG SET - END ########";
+
+			IOWrite($hash, 'sendMsg', $msg);
+			Log3 $name, 3, "$ioname: $name set $cmd $cmd2";
+
+			readingsBeginUpdate($hash);
+			readingsBulkUpdate($hash, "button", $button, 1);
+			readingsBulkUpdate($hash, "channel", $channel, 1);
+			readingsBulkUpdate($hash, "counter_send", $counter_send, 1);
+			readingsBulkUpdate($hash, "state", "send $button", 1);
+
+			my $group_value;
+			foreach (@channels) {
+				readingsBulkUpdate($hash, "LastAction_Channel_".sprintf ("%02s",$_), $button);
+				$group_value.= $_.",";
+			}
+
+			$group_value = substr($group_value,0,length($group_value)-1);
+			$group_value = "no" if (scalar @channels == 1);
+
+			readingsBulkUpdate($hash, "channel_control", $group_value);
+			readingsEndUpdate($hash, 1);
 		}
-
-		$bit0to7 = reverse $bit0to7;
-		$bit64to71 = reverse $bit64to71;		# JaroLift only
-
-		### DeviceKey (die ersten Stellen aus der Vorage, der Rest vom Sendenen Kanal)
-		$Serial_send = sprintf ("%24b", $Serial_send);																					# verified
-
-		$DeviceKey = $Serial_send.$jaro_channels{$channel};																			# verified
-		$DeviceKey = oct("0b".$DeviceKey);																											# verified
-
-		######## KEYGEN #############
-		my $counter_send = ReadingsVal($name, "counter_send", 0);
-		$counter_send++;
-		my $keylow = $DeviceKey | 0x20000000;
-		my $device_key_lsb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
-		$keylow = $DeviceKey | 0x60000000;
-		my $device_key_msb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
-
-		### KEELOQ
-		my $disc = $bit0to7."0000".$jaro_channels{$channel};	# Hopcode																	# verified
-
-		my $result = (SD_Rollo_Keeloq_bin2dec($disc) << 16) | $counter_send;														# verified
-		my $encoded = SD_Rollo_Keeloq_encrypt($result, $device_key_msb, $device_key_lsb,$name);					# verified
-
-		### Zusammenführen
-		my $bits = reverse (sprintf("%032b", $encoded)).reverse($jaro_channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
-		my $msg = "P87#$bits"."P#R".$Repeats;
-
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Channel                   = $channel";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart1 (Group 0-7)  = $bit0to7";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - channelpart2 (Group 8-15) = $bit64to71";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button                    = $button";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Button_bits               = $buttonbits";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - DeviceKey                 = $DeviceKey";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_lsb            = $device_key_lsb";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Device_key_msb            = $device_key_msb";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - disc                      = $disc";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - result (decode)           = $result";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Counter                   = $counter_send";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
-
-		my $binsplit = SD_Rollo_Keeloq_binsplit_JaroLift($bits);
-
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                                                   encoded     <- | ->     decrypts";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set                               Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send split)         = $binsplit";
-		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - bits (send)               = $bits";
-		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - sendMSG                   = $msg";
-		Log3 $name, 4, "######## DEBUG SET - END ########";
-
-		IOWrite($hash, 'sendMsg', $msg);
-		Log3 $name, 3, "$ioname: $name set $cmd $cmd2";
-
-		readingsBeginUpdate($hash);
-		readingsBulkUpdate($hash, "button", $button, 1);
-		readingsBulkUpdate($hash, "channel", $channel, 1);
-		readingsBulkUpdate($hash, "counter_send", $counter_send, 1);
-		readingsBulkUpdate($hash, "state", "send $button", 1);
-
-		my $group_value;
-		foreach (@channels) {
-			readingsBulkUpdate($hash, "LastAction_Channel_".sprintf ("%02s",$_), $button);
-			$group_value.= $_.",";
-		}
-
-		$group_value = substr($group_value,0,length($group_value)-1);
-		$group_value = "no" if (scalar @channels == 1);
-
-		readingsBulkUpdate($hash, "channel_control", $group_value);
-		readingsEndUpdate($hash, 1);
 		#return $cmd." ".$cmd2;		# to display cmd is running	
 	}
 
@@ -1277,8 +1298,10 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 		<i>Beispiel:</i> 0xaaaaaaaa
 		</li>
 		<br>
-		<li><a name="LearnVer"><b>LearnVer</b></a><br>
+		<li><a name="LearnVersion"><b>LearnVersion</b></a><br>
 		Anlernvariante, da diese sich je nach alter der Geräte unterscheidet. (Standard old)<br>
+		<ul>- old Version: senden von <code>learn</code></ul>
+		<ul>- new Version: senden von <code>updown</code> und zus&auml;tzlich gefolgt von <code>stop</code></ul>
 		</li>
 		<br>
 		<li><a name="MasterLSB"><b>MasterLSB</b></a><br>
