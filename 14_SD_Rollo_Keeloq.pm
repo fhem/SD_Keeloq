@@ -1,6 +1,6 @@
 #######################################################################################################################################################
-# $Id: 14_SD_Rollo_Keeloq.pm 32 2019-02-11 12:00:00 v3.3.3-dev_05.12. $
-#   
+# $Id: 14_SD_Rollo_Keeloq.pm 32 2019-02-12 12:00:00 v3.3.3-dev_05.12. $
+#
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for JAROLIFT devices.
 # It is an attempt to implement the project "Bastelbudenbuben" in Perl without personal testing.
@@ -22,11 +22,9 @@ package main;
 use strict;
 use warnings;
 use POSIX;
-#use List::Util qw(any);				# for any function
 use Data::Dumper qw (Dumper);
 
 my %jaro_buttons = (
-	# keys(model) => values
 	"up"					=>	"1000",
 	"stop"				=>	"0100",
 	"down"				=>	"0010",
@@ -37,7 +35,6 @@ my %jaro_buttons = (
 );
 
 my %jaro_channels = (
-	# keys(model) => values
 	1			=>	"0000",
 	2			=>	"0001",
 	3			=>	"0010",
@@ -57,7 +54,6 @@ my %jaro_channels = (
 );
 
 my %roto_buttons = (
-	# keys(model) => values
 	"up"		=>	"0100",
 	"down"	=>	"1001",
 	"stop"	=>	"0001"
@@ -65,7 +61,6 @@ my %roto_buttons = (
 
 my @jaro_commands_standard = ("up","stop","down","learn","shade","shade_learn","updown");
 my @jaro_addGroups;
-
 my $KeeLoq_NLF;
 
 #####################################
@@ -79,7 +74,7 @@ sub SD_Rollo_Keeloq_Initialize() {
   $hash->{ParseFn}			= "SD_Rollo_Keeloq_Parse";
   $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
 													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
-													"addGroups Serial_send LearnVer:old,new".$readingFnAttributes;
+													"addGroups Serial_send LearnVer:old,new ".$readingFnAttributes;
   $hash->{FW_summaryFn}	= "SD_Rollo_Keeloq_summaryFn";          # displays html instead of status icon in fhemweb room-view
 }
 
@@ -91,7 +86,7 @@ sub SD_Rollo_Keeloq_Define() {
   # Argument            				   0	     1       2      3          4
 	return " wrong syntax: define <name> SD_Rollo_Keeloq <Serial> <Typ> <optional IODEV> " if(int(@a) < 4 || int(@a) > 5);
 	return "ERROR: your <Typ> is wrong! Please use JaroLift or Roto." if not ($a[3] eq "JaroLift" || $a[3] eq "Roto");
-	
+
 	if ($a[3] eq "JaroLift" && not ($a[2] =~ /^[0-9]+$/s && ($a[2] <= 16777215 || $a[2] >= 0 ))) {
 		return "ERROR: your JaroLift <Serial> is wrong! Please use only decimal numbres."					# JaroLift max
 	}
@@ -100,8 +95,8 @@ sub SD_Rollo_Keeloq_Define() {
 		return "ERROR: your Roto <Serial> is wrong! Please use only decimal numbres.";						# Roto max
 	}
 
-  $hash->{STATE} = "Defined";
-  my $name = $hash->{NAME};
+	$hash->{STATE} = "Defined";
+	my $name = $hash->{NAME};
 	my $typ = $a[3] if($a[3]);
 	my $iodevice = $a[4] if($a[4]);
 
@@ -122,7 +117,8 @@ sub SD_Rollo_Keeloq_Attr(@) {
 	my $MasterLSB = AttrVal($name, "MasterLSB", "");
 	my $Serial_send = AttrVal($name, "Serial_send", "");
 	my $typ = ReadingsVal($name, "typ", "");
-	
+	my $DDSelected = ReadingsVal($name, "DDSelected", "");
+
 	if ($init_done == 1) {
 		if ($cmd eq "set") {
 			if (($attrName eq "MasterLSB" && $MasterMSB ne "") || ($attrName eq "MasterMSB" && $MasterLSB ne "")) {
@@ -134,55 +130,62 @@ sub SD_Rollo_Keeloq_Attr(@) {
 						readingsSingleUpdate($hash, "user_modus", "all_functions", 1);
 					}
 			}
-			
+
+			### JaroLift ###
 			if ($typ eq "JaroLift") {
 				if ($attrName eq "addGroups") {
 					return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_\-äÄüÜöÖ:,\s]+[^,.:\D]$/s);
 					SD_Rollo_Keeloq_translate($attrValue);
 					$attr{$name}{addGroups} = $attrValue;
 				}
-				
+
 				if ($attrName eq "ChannelNames") {
 					return "ERROR: wrong $attrName syntax! [only a-z | umlauts | numbers | , | _ | - | ]\nexample: South,North" if not ($attrValue =~ /\A[a-zA-Z\d,_-äÄüÜöÖ\s]+\Z/s);
 					SD_Rollo_Keeloq_translate($attrValue);
 					$attr{$name}{ChannelNames} = $attrValue;
 				}
-				
+
 				if ($attrName eq "Channels" && $attrValue == 0 && $addGroups eq "") {
 					return "ERROR: you can use Channels = $attrValue only with defined attribut addGroups!";
 				}
 			}
 
+			### Roto ###
 			if ($typ eq "Roto") {
 				if ($attrName eq "addGroups" || $attrName eq "Channels" || $attrName eq "ChannelNames" || $attrName eq "ChannelFixed" || $attrName eq "ShowIcons" || $attrName eq "ShowLearn" || $attrName eq "ShowShade") {
 					return "ERROR: the attributes $attrName are not support on typ $typ";
 				}
-				
+
 				if ($attrName eq "UI" && $attrValue ne "aus") {
 					return "ERROR: the attributes $attrName with the value $attrValue are not support at this moment on typ $typ";
 				}
 			}
-			
+
+			### all typ´s ###
 			if ($attrName eq "MasterLSB" || $attrName eq "MasterMSB" || $attrName eq "KeeLoq_NLF") {
 				return "ERROR: wrong $attrName key format! [only in hex format | example: 0x23ac34de]" if not ($attrValue =~ /^0x[a-fA-F0-9]{8}+$/s);
 			}
-			
+
 			if ($attrName eq "Serial_send") {
-				return "ERROR: wrong JaroLift $attrName! allowed from 0 to 16777215." if ($typ eq "JaroLift" && not ($attrValue =~ /^[0-9]+$/s && $attrValue <= 16777215 && $attrValue >= 0 ));
-				return "ERROR: wrong Roto $attrName! allowed from 0 to 268435455." if ($typ eq "Roto" && not ($attrValue =~ /^[0-9]+$/s && $attrValue <= 268435455 && $attrValue >= 0 ));
-				
+				return "ERROR: wrong JaroLift $attrName! allowed from 0 to 16777215." if ($typ eq "JaroLift" && not ($attrValue =~ /^\d+$/s && $attrValue <= 16777215 && $attrValue >= 0 ));
+				return "ERROR: wrong Roto $attrName! allowed from 0 to 268435455." if ($typ eq "Roto" && not ($attrValue =~ /^\d+$/s && $attrValue <= 268435455 && $attrValue >= 0 ));
+
 				if (ReadingsVal($name, "serial_receive", 0) eq $attrValue) {
 					return "ERROR: your value must be different from the reading serial_receive!";
 				}
-				
+
 				if ($MasterMSB ne "" && $MasterLSB ne "" && $attrValue ne "") {
 					readingsSingleUpdate($hash, "user_info", "messages can be received and send!", 1);
 					readingsSingleUpdate($hash, "user_modus", "all_functions", 1);
 				}
 			}
 
-			if ($attrName eq "IODev") {
+			if ($attrName eq "ChannelFixed" && $attrValue > $attr{$name}{Channels}) {
+				return "ERROR: your $attrName attribut with value $attrValue is wrong!\nIt is no compatible with ".$attr{$name}{Channels}." channel option.";
+			}
+
 			### Check, eingegebener Sender als Device definiert?
+			if ($attrName eq "IODev") {
 				my @sender = ();
 				foreach my $d (sort keys %defs) {
 					if(defined($defs{$d}) && $defs{$d}{TYPE} eq "SIGNALduino" && $defs{$d}{DeviceName} ne "none" && $defs{$d}{DevState} eq "initialized") {
@@ -191,8 +194,12 @@ sub SD_Rollo_Keeloq_Attr(@) {
 				}
 				return "ERROR: Your $attrName is wrong!\n\nDevices to use: \n- ".join("\n- ",@sender) if (not grep /^$attrValue$/, @sender);
 			}
+
+			if ($attrName eq "UI" && $attrValue eq "Einzeilig" && not exists $attr{$name}{Channels} && not exists $attr{$name}{ChannelFixed}) {
+				setReadingsVal($hash,"DDSelected",1,FmtDateTime(time()));
+			}
 		}
-		
+
 		if ($cmd eq "del") {
 			if ($attrName eq "MasterLSB" || $attrName eq "MasterMSB") {
 				readingsSingleUpdate($hash, "user_info", "Please input MasterMSB and MasterLSB Key!", 1);
@@ -203,12 +210,27 @@ sub SD_Rollo_Keeloq_Attr(@) {
 				readingsSingleUpdate($hash, "user_info", "messages can be received!", 1);
 				readingsSingleUpdate($hash, "user_modus", "limited_functions", 1);
 			}
+
+			if ($DDSelected ne "") {
+				if ($attrName eq "Channels") {
+					setReadingsVal($hash,"DDSelected",1,FmtDateTime(time()));
+				}
+
+				if ($attrName eq "UI") {
+					readingsDelete($hash, "DDSelected");
+				}
+			} elsif ($DDSelected eq "" && $attrName eq "ChannelFixed") {
+				setReadingsVal($hash,"DDSelected",1,FmtDateTime(time()));
+			}
+
+			if ($attrName eq "addGroups" && $attr{$name}{Channels} == 0) {
+				$attr{$name}{Channels} = 1;
+			}
 		}
 
 		Log3 $name, 3, "SD_Rollo_Keeloq: $cmd attr $attrName to $attrValue" if (defined $attrValue);
 		Log3 $name, 3, "SD_Rollo_Keeloq: $cmd attr $attrName" if (not defined $attrValue);
 	}
-
 	return undef;
 }
 
@@ -234,7 +256,7 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 	my $DeviceKey;			# needed for KeeLoq
 	my $buttonbits;			#	Buttonbits
 	my $button;					#	Buttontext
-	
+
 	### Einzeilig mit Auswahlfeld ###
 	if ($a[0] eq "OptionValue") {
 		$a[0] = $hash->{READINGS}{DDSelected}{VAL};
@@ -278,7 +300,7 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - returnlist finish = $ret" if ($cmd ne "?");
 	}
 
-  return $ret if ( $a[0] eq "?");
+	return $ret if ( $a[0] eq "?");
 	return "ERROR: no set value specified!" if(int(@a) <= 1);
 	return "ERROR: too much set value specified!" if(int(@a) > 2);
 
@@ -287,8 +309,8 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 	return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
 	return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");
 
-	my @channel_split = split(",", $cmd2);	
-	
+	my @channel_split = split(",", $cmd2);
+
 	if (scalar @channel_split == 1) {
 		if ($cmd2 =~ /^\d$/ && ($cmd2 < 1 || $cmd2 > 16) ) {
 			return "ERROR: your channel $cmd2 is not support! (not in list - failed 1)";
@@ -329,7 +351,9 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 		}
 
 		return "ERROR: command $cmd is not support!" if ( "@jaro_commands_standard" !~ /$cmd/ );
-		#return "ERROR: channel $cmd2 is not activated! you have activated $Channels Channels." if ($cmd2 > $Channels);
+		if ($cmd2 =~ /^\d$/) {
+			return "ERROR: channel $cmd2 is not activated! you have activated $Channels Channels." if ($cmd2 > $Channels);
+		}
 
 		#### CHECK cmd ####
 		### multi control ###
@@ -413,10 +437,10 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 		my $device_key_msb = SD_Rollo_Keeloq_decrypt($keylow, hex($MasterMSB), hex($MasterLSB),$name);	# verified
 
 		### KEELOQ
-		my $disc = $bit0to7."0000".$jaro_channels{$channel};	# Hopcode													# verified
+		my $disc = $bit0to7."0000".$jaro_channels{$channel};	# Hopcode																	# verified
 
 		my $result = (SD_Rollo_Keeloq_bin2dec($disc) << 16) | $counter_send;														# verified
-		my $encoded = SD_Rollo_Keeloq_encrypt($result, $device_key_msb, $device_key_lsb,$name);				# verified
+		my $encoded = SD_Rollo_Keeloq_encrypt($result, $device_key_msb, $device_key_lsb,$name);					# verified
 
 		### Zusammenführen
 		my $bits = reverse (sprintf("%032b", $encoded)).reverse($jaro_channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
@@ -463,7 +487,7 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 		$group_value = "no" if (scalar @channels == 1);
 
 		readingsBulkUpdate($hash, "channel_control", $group_value);
-		readingsEndUpdate($hash, 1); 		# Notify is done by Dispatch
+		readingsEndUpdate($hash, 1);
 		#return $cmd." ".$cmd2;		# to display cmd is running	
 	}
 
@@ -647,11 +671,11 @@ sub SD_Rollo_Keeloq_Parse($$) {
 	my $devicedef = $serialWithoutCh;																			### Serial without last nibble, fix at device at every channel
 	$modules{SD_Rollo_Keeloq}{defptr}{ioname} = $ioname;
   my $def = $modules{SD_Rollo_Keeloq}{defptr}{$devicedef." ".$typ};
-  
+
 	if(!$def) {
-    Log3 $iohash, 2, "SD_Rollo_Keeloq_Parse Unknown device $typ with Code $devicedef detected, please define (rawdate=$rawData)";
-    return "UNDEFINED SD_Rollo_Keeloq_".$devicedef." SD_Rollo_Keeloq ".$devicedef." ".$typ;
-  }
+		Log3 $iohash, 2, "SD_Rollo_Keeloq_Parse Unknown device $typ with Code $devicedef detected, please define (rawdate=$rawData)";
+		return "UNDEFINED SD_Rollo_Keeloq_".$devicedef." SD_Rollo_Keeloq ".$devicedef." ".$typ;
+	}
 
 	my $hash = $def;
 	my $name = $hash->{NAME};
@@ -718,7 +742,7 @@ sub SD_Rollo_Keeloq_Parse($$) {
 		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse             Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
 		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - bitData = |->     must be calculated!     <-| ".reverse (substr ($bitData , 32 , 4)) ." ". reverse (substr ($bitData , 36 , 24)) ." ".$button ." ". $bit64to71;
-		
+
 		my @groups8_15 = split //, reverse $bit64to71;
 		foreach my $i (0..7) {																						# group - ch8-ch15
 			if ($groups8_15[$i] eq 1) {
@@ -770,7 +794,7 @@ sub SD_Rollo_Keeloq_Parse($$) {
 	###### DECODE ######
 	if ($encrypted == 0) {
 		Log3 $name, 5, "######## DEBUG PARSE - for LSB & MSB Keys ########";
-		
+
 		### Hopcode
 		my $Hopcode;
 		if ($typ eq "JaroLift") {
@@ -816,7 +840,7 @@ sub SD_Rollo_Keeloq_Parse($$) {
 			### Counter
 			$counter = substr($Decoded, 16, 16);
 			$counter_decr = SD_Rollo_Keeloq_bin2dec($counter);
-	
+
 			my $group_value0_7 = "";
 			my @groups0_7 = split //, reverse $bit0to7;
 			foreach my $i (0..7) {																																										# group - ch0-ch7
@@ -887,21 +911,16 @@ sub SD_Rollo_Keeloq_Parse($$) {
 
 	Log3 $name, 5, "######## DEBUG without LSB & MSB Keys ########";
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts button                      = $button";
-
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts ch + serial                 = $serial (at each channel changes)" if ($typ eq "JaroLift");
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts ch + serial (bin)           = ".sprintf("%028b", $serial) if ($typ eq "JaroLift");
-
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts serial                      = $serialWithoutCh (for each channel)";
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts serial (bin)                = ".sprintf("%024b", $serialWithoutCh)." (for each channel)";
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel (from serial | bin) = $channel_bin" if (defined $channel_bin);
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel (from serial)       = $channel" if (defined $channel);
-
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channelpart2 (group 8-15)   = $bit64to71" if (defined $bit64to71);
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts channel_control             = $group_value" if (defined $group_value);
-
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts Voltage LOW indicator       = $VLOW" if (defined $VLOW);
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - decrypts Repeat indicator            = $RPT" if (defined $RPT);
-
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - user_modus                           = $modus";
 	Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Parse - user_info                            = $info";
 	Log3 $name, 5, "######## DEBUG END ########\n";
@@ -931,8 +950,7 @@ sub SD_Rollo_Keeloq_Parse($$) {
 			}
 		}
 	}
-
-	readingsEndUpdate($hash, 1); 		# Notify is done by Dispatch
+	readingsEndUpdate($hash, 1);
 
 	return $name;
 }
@@ -984,14 +1002,13 @@ sub SD_Rollo_Keeloq_summaryFn($$$$) {
 	my ($FW_wname, $d, $room, $pageHash) = @_;										# pageHash is set for summaryFn.
 	my $hash   = $defs{$d};
 	my $name = $hash->{NAME};
-
 	return SD_Rollo_Keeloq_attr2html($name, $hash);
 }
 
 #####################################
 # Create HTML-Code
 sub SD_Rollo_Keeloq_attr2html($@) {
-  my ($name, $hash) = @_;
+	my ($name, $hash) = @_;
 	my $addGroups = AttrVal($name, "addGroups", "");							# groups with channels
 	my $Channels = AttrVal($name, "Channels", 1);
 	my $ChannelFixed = AttrVal($name, "ChannelFixed", "ch1");  
@@ -1010,25 +1027,25 @@ sub SD_Rollo_Keeloq_attr2html($@) {
 
 
 	### without UI
-  if ($UI eq "aus" || $Serial_send eq "") {
+	if ($UI eq "aus" || $Serial_send eq "") {
 		return;
-  }
+	}
 
-  ### ChannelNames festlegen
-  my @ChName = ();																												# name standard
+	### ChannelNames festlegen
+	my @ChName = ();																												# name standard
 	my @ChName_alias = ();																									# alias name from attrib ChannelNames
 	@ChName_alias = split /,/, $ChannelNames if ($ChannelNames ne "");			# overwrite array with values
-  for my $rownr (1..16) {
+	for my $rownr (1..16) {
 		if ( scalar(@ChName_alias) > 0 && scalar(@ChName_alias) >= $rownr) {
 			push(@ChName,"Kanal $rownr") if ($ChName_alias[$rownr-1] eq "");
 			push(@ChName,$ChName_alias[$rownr-1]) if ($ChName_alias[$rownr-1] ne "");
 		} else {
 			push(@ChName,"Kanal $rownr");
 		}
-  }
+	}
 
-  ### Mehrzeilig ###
-  if ($UI eq "Mehrzeilig") {
+	### Mehrzeilig ###
+	if ($UI eq "Mehrzeilig") {
 		if (not exists $attr{$name}{ChannelFixed}) {
 			$html = "<div><table class=\"block wide\">"; 
 			foreach my $rownr (1..$Channels) {
@@ -1038,12 +1055,11 @@ sub SD_Rollo_Keeloq_attr2html($@) {
 				$html.= "</tr>";
 			}
 		} else {
-				$html = "<div><table class=\"block wide\">";
-				$html.= "<tr><td>";
-				my $ChannelNum = $ChannelFixed =~ s/ch//r;
-				$html.= $ChName[$ChannelNum-1]."</td>";
-				$html.= SD_Rollo_Keeloq_attr2htmlButtons("$ChannelNum", $name, $ShowIcons, $ShowShade, $ShowLearn);
-				$html.= "</tr>";
+			$html = "<div><table class=\"block wide\">";
+			$html.= "<tr><td>";
+			$html.= $ChName[$ChannelFixed-1]."</td>";
+			$html.= SD_Rollo_Keeloq_attr2htmlButtons($ChannelFixed, $name, $ShowIcons, $ShowShade, $ShowLearn);
+			$html.= "</tr>";
 		}
 
 		### Gruppen hinzu
@@ -1058,19 +1074,19 @@ sub SD_Rollo_Keeloq_attr2html($@) {
 
 		$html.= "</table></div>";
 		return $html;
-  }
+	}
 
-  ### Einzeilig ###
-  if ($UI eq "Einzeilig") {
+	### Einzeilig ###
+	if ($UI eq "Einzeilig") {
 		if (not exists $attr{$name}{ChannelFixed}) {
 			$html = "<div><table class=\"block wide\"><tr><td>"; 
 			my $changecmd = "cmd.$name=setreading $name DDSelected ";
 			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
 			foreach my $rownr (1..$Channels) {
 				if ($DDSelected eq "$rownr"){
-					$html.= "<option selected value=ch".($rownr).">".($ChName[$rownr-1])."</option>";
+					$html.= "<option selected value=".($rownr).">".($ChName[$rownr-1])."</option>";
 				} else {
-					$html.= "<option value=ch".($rownr).">".($ChName[$rownr-1])."</option>";
+					$html.= "<option value=".($rownr).">".($ChName[$rownr-1])."</option>";
 				}
 			}
 
@@ -1086,7 +1102,7 @@ sub SD_Rollo_Keeloq_attr2html($@) {
 			}
 
 			$html.= "</select></td>";
-			$html.= SD_Rollo_Keeloq_attr2htmlButtons("OptionValue", $name, $ShowIcons, $ShowShade, $ShowLearn);
+			$html.= SD_Rollo_Keeloq_attr2htmlButtons($DDSelected, $name, $ShowIcons, $ShowShade, $ShowLearn);
 			$html.= "</table></div>";
 		}
 
@@ -1100,7 +1116,7 @@ sub SD_Rollo_Keeloq_attr2html($@) {
 		return $html;
 	}
 
-  return;
+	return;
 }
 
 #####################################
@@ -1108,8 +1124,7 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 	my ($channel, $name, $ShowIcons, $ShowShade, $ShowLearn) = @_;
 	my $html = "";
 
-	# $name    = name of device
-	# $channel = ch1 ... ch16 or channelgroup example 2,4
+	# $name    = name of device | $channel = 1 ... 16 or channelgroup example 2,4
 
 	### UP
 	my $cmd = "cmd.$name=set $name up $channel";
@@ -1196,7 +1211,7 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 
 <a name="SD_Rollo_Keeloq"></a>
 <h3>SD_Rollo_Keeloq</h3>
-<ul>Das SD_Rollo_Keeloq Modul simuliert eine Fernbedienung zur Steuerung anlernbarer Jarolift oder Roto TDEF-Funk-Motoren für Rollläden und Markisen. Dieses Modul wurde nach Vorlage des Bastelbudenbuben Projektes gefertigt. 
+<ul>Das SD_Rollo_Keeloq Modul simuliert eine Fernbedienung zur Steuerung anlernbarer Jarolift oder Roto Rollläden und Markisen welche nach dem KeeLoq verfahren arbeiten. Dieses Modul wurde nach Vorlage des Bastelbudenbuben Projektes gefertigt. 
 	Zur De- und Encodierung des Signals werden Keys benötigt welche via Attribut gesetzt werden müssen! Ohne Schl&uuml;ssel kann man das Modul zum empfangen der unverschl&uuml;sselten Daten nutzen.<br><br>
 	Bei der Bedienung eines Motors mit einer anderen Fernbedienung wird der Status an das fhem-Device &uuml;bergeben.<br>
 	Das angelegte Device wird mit der Serial der Fernbedienung angelegt. In dem Device wird der Zustand angezeigt und erst nach setzen des Attributes Serial_send kann man Motoren steuern nach erneutem anlernen.<br><br><br>
@@ -1210,7 +1225,7 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 	<b>Set</b><br>
 	<ul><code>set &lt;command&gt; &lt;NAME&gt;</code><br><br>
 	<i><b>NAME:</b>1-16</i> oder angelegte <i>addGroups</i></ul><br>
-	
+
 	<ul><b>command:</b><br>
 		<ul>
 			<li><b>learn</b><br>
@@ -1230,7 +1245,7 @@ sub SD_Rollo_Keeloq_attr2htmlButtons($$$$$) {
 	Beispiele: <ul>set down 7<br>
 	set down Nordseite</ul>
 	</ul><br><br>
-	
+
 	<b>Get</b><br>
 	<ul>N/A</ul><br><br>
 
