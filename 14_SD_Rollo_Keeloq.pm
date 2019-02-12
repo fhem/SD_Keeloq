@@ -84,8 +84,8 @@ sub SD_Rollo_Keeloq_Define() {
   my @a = split("[ \t][ \t]*", $def);
 
   # Argument            				   0	     1       2      3          4
-	return " wrong syntax: define <name> SD_Rollo_Keeloq <Serial> <Typ> <optional IODEV> " if(int(@a) < 4 || int(@a) > 5);
-	return "ERROR: your <Typ> is wrong! Please use JaroLift or Roto." if not ($a[3] eq "JaroLift" || $a[3] eq "Roto");
+	return "wrong syntax: define <name> SD_Rollo_Keeloq <Serial> <Typ> <optional IODEV>" if(int(@a) < 4 || int(@a) > 5);
+	return "ERROR: your <Typ> is wrong! Please use JaroLift or Roto.\n\nsyntax: define <name> SD_Rollo_Keeloq <Serial> <Typ> <optional IODEV>" if not ($a[3] eq "JaroLift" || $a[3] eq "Roto");
 
 	if ($a[3] eq "JaroLift" && not ($a[2] =~ /^[0-9]+$/s && ($a[2] <= 16777215 || $a[2] >= 0 ))) {
 		return "ERROR: your JaroLift <Serial> is wrong! Please use only decimal numbres."					# JaroLift max
@@ -103,6 +103,8 @@ sub SD_Rollo_Keeloq_Define() {
 	$modules{SD_Rollo_Keeloq}{defptr}{$hash->{DEF}} = $hash;
 	my $ioname = $modules{SD_Rollo_Keeloq}{defptr}{ioname} if (exists $modules{SD_Rollo_Keeloq}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
+
+	$attr{$name}{room}		= "SD_Rollo_Keeloq" if ( not exists($attr{$name}{room}) );
 
 	AssignIoPort($hash, $iodevice);
 	return undef;
@@ -237,7 +239,8 @@ sub SD_Rollo_Keeloq_Attr(@) {
 #####################################
 sub SD_Rollo_Keeloq_Set($$$@) {
 	my ( $hash, $name, @a ) = @_;
-	my $ioname = $hash->{IODev}{NAME};
+	my $ioname = $hash->{IODev}{NAME} if (exists $hash->{IODev}{NAME});
+	my $ioname = "No I/O"  if (not exists $hash->{IODev}{NAME});					# for testsystem if no IO
 	my $addGroups = AttrVal($name, "addGroups", "");
 	my $Channels = AttrVal($name, "Channels", 1);
 	my $ChannelFixed = AttrVal($name, "ChannelFixed", "none");
