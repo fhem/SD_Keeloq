@@ -60,6 +60,7 @@ my %roto_buttons = (
 );
 
 my @jaro_commands_standard = ("up","stop","down","learn","shade","shade_learn","updown");
+my @roto_commands_standard = ("up","stop","down");
 my @jaro_addGroups;
 my $KeeLoq_NLF;
 
@@ -105,7 +106,8 @@ sub SD_Rollo_Keeloq_Define() {
 	$iodevice = $ioname if not $iodevice;
 
 	$attr{$name}{room}		= "SD_Rollo_Keeloq" if ( not exists($attr{$name}{room}) );
-
+	setReadingsVal($hash,"typ",$typ,FmtDateTime(time()));
+	
 	AssignIoPort($hash, $iodevice);
 	return undef;
 }
@@ -254,14 +256,18 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 
 	my $cmd = $a[0];
 	my $cmd2 = $a[1];
-	my $channel;				# JaroLift only
+
+	### Typ JaroLift ###
+	my @channel_split;
+	my $channel;
+	my $bit64to71;
+	### together ###
 	my $bit0to7;
-	my $bit64to71;			# JaroLift only
 	my $DeviceKey;			# needed for KeeLoq
 	my $buttonbits;			#	Buttonbits
 	my $button;					#	Buttontext
 
-	
+
 	### Einzeilig mit Auswahlfeld ###
 	if ($a[0] eq "OptionValue") {
 		$a[0] = $hash->{READINGS}{DDSelected}{VAL};
@@ -269,68 +275,76 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 
 	### only with Serial_send create setlist for user
 	if ($Serial_send ne "" && $MasterMSB ne "" && $MasterLSB ne "" && $KeeLoq_NLF ne "") {
+		### Typ JaroLift ###
+		if ($typ eq "JaroLift") {
+			### only all options without ChannelFixed ###
+			if ($ChannelFixed eq "none") {
+				my $ret_part2;
+				## for addGroups if no Channels
+				if ($addGroups ne "") {
+					@jaro_addGroups = split / /, $addGroups;
+					foreach (@jaro_addGroups){
+						$_ =~ s/:\d.*//g;
+						$ret_part2.= "$_,";
+					}
+				}
 
-		### only all options without ChannelFixed ###
-		if ($ChannelFixed eq "none") {
-			my $ret_part2;
-			## for addGroups if no Channels
-			if ($addGroups ne "") {
-				@jaro_addGroups = split / /, $addGroups;
-				foreach (@jaro_addGroups){
-					$_ =~ s/:\d.*//g;
-					$ret_part2.= "$_,";
+				foreach my $rownr (1..$Channels) {
+					$ret_part2.= "$rownr,";
+				}
+
+				$ret_part2 = substr($ret_part2,0,-1);		# cut last ,
+				foreach (@jaro_commands_standard) {
+					$ret.=" $_:multiple,".$ret_part2;
+				}
+			} else {
+				foreach (@jaro_commands_standard) {
+					$ret.=" $_:$ChannelFixed";
 				}
 			}
-
-			foreach my $rownr (1..$Channels) {
-				$ret_part2.= "$rownr,";
+		### Typ Roto ###
+		} elsif ($typ eq "Roto") {
+			foreach (@roto_commands_standard) {
+				$ret.=" $_:noArg";
 			}
-
-			$ret_part2 = substr($ret_part2,0,-1);		# cut last ,
-			$ret.=" up:multiple,".$ret_part2;
-			$ret.=" stop:multiple,".$ret_part2;
-			$ret.=" down:multiple,".$ret_part2;
-			$ret.=" shade:multiple,".$ret_part2;
-			$ret.=" learn:multiple,".$ret_part2;
-			$ret.=" updown:multiple,".$ret_part2;
-		} else {
-			$ret.=" up:$ChannelFixed";
-			$ret.=" stop:$ChannelFixed";
-			$ret.=" down:$ChannelFixed";
-			$ret.=" shade:$ChannelFixed";
-			$ret.=" learn:$ChannelFixed";
-			$ret.=" updown:$ChannelFixed";
 		}
 	}
 
 	return $ret if ( $a[0] eq "?");
-	return "ERROR: no set value specified!" if(int(@a) <= 1);
-	return "ERROR: too much set value specified!" if(int(@a) > 2);
+	### Typ JaroLift ###
+	if ($typ eq "JaroLift") {
+		return "ERROR: no set value specified!" if(int(@a) <= 1);
+		return "ERROR: too much set value specified!" if(int(@a) > 2);
+
+		@channel_split = split(",", $cmd2);
+
+		if (scalar @channel_split == 1) {
+			if ($cmd2 =~ /^\d$/ && ($cmd2 < 1 || $cmd2 > 16) ) {
+				return "ERROR: your channel $cmd2 is not support! (not in list - failed 1)";
+			}
+		} elsif (scalar @channel_split > 1) {
+			foreach (@channel_split){
+				if ($_ !~ /^\d/) {
+					if ( not grep( /$_/, $addGroups)) {
+						return "ERROR: one channel $cmd2 is not support! (not in list - failed 2)";
+					}
+				} else {
+					return "ERROR: your channels $cmd2 are not support! (not in list - failed 3)" if ($_<1 && $_>16);			
+				}
+			}
+		}
+	### Typ Roto ###
+	} elsif ($typ eq "Roto") {
+		return "ERROR: no set value specified!" if(int(@a) != 1);
+	}
 
 	return "ERROR: no value, set Attributes MasterMSB please!" if ($MasterMSB eq "");
 	return "ERROR: no value, set Attributes MasterLSB please!" if ($MasterLSB eq "");
 	return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
 	return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");
 
-	my @channel_split = split(",", $cmd2);
-
-	if (scalar @channel_split == 1) {
-		if ($cmd2 =~ /^\d$/ && ($cmd2 < 1 || $cmd2 > 16) ) {
-			return "ERROR: your channel $cmd2 is not support! (not in list - failed 1)";
-		}
-	} elsif (scalar @channel_split > 1) {
-		foreach (@channel_split){
-			if ($_ !~ /^\d/) {
-				if ( not grep( /$_/, $addGroups)) {
-					return "ERROR: one channel $cmd2 is not support! (not in list - failed 2)";
-				}
-			} else {
-				return "ERROR: your channels $cmd2 are not support! (not in list - failed 3)" if ($_<1 && $_>16);			
-			}
-		}
-	}
-
 	if ($cmd ne "?") {
+		return "ERROR: your device is under development!" if ($typ eq "Roto");
 		return "ERROR: you have no I/O DEV defined! Please define one device to send or dummy." if (AttrVal($name, "IODev", "") eq "");
 		Log3 $name, 4, "######## DEBUG SET - START ########";
 		Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - cmd=$cmd cmd2=$cmd2 args cmd2=".scalar @channel_split." addGroups=$addGroups" if ($cmd ne "?" && defined $cmd2);
@@ -338,18 +352,32 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 		my @channels;
 		my @channel_from_addGroups;
 		my $foreachCount;
-		
+
 		if ($learning ne "old" && $cmd eq "learn") {
 			$foreachCount = 2;	# LearnVersion new
 		} else {
 			$foreachCount = 1;	# LearnVersion old
 		}
 
+		if ($cmd eq "shade_learn") {
+			$foreachCount = 4;
+			$cmd = "stop";
+		}
+
 		foreach my $i (1..$foreachCount) {
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, foreachCount=$foreachCount cmd=$cmd";
+			## LearnVersion new - part 1
 			if ($learning ne "old" && $cmd eq "learn" && $i == 1) {
 				$cmd = "updown";
+			## LearnVersion new - part 2
 			} elsif ($learning ne "old" && $cmd eq "updown" && $i == 2) {
 				$cmd = "stop";
+				$bit0to7 = undef;
+				$bit64to71 = undef;
+				$DeviceKey = undef;
+				$Serial_send = AttrVal($name, "Serial_send", "");
+			## shade_learn ##
+			} elsif ($cmd eq "stop" && $i >= 2) {
 				$bit0to7 = undef;
 				$bit64to71 = undef;
 				$DeviceKey = undef;
@@ -358,8 +386,8 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 
 			$button = $cmd;
 			$buttonbits = $jaro_buttons{$cmd};
-			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - LearnVersion=$learning Loop=$i" if ((defined $cmd2 && $learning eq "old") || (defined $cmd2 && $learning eq "new"));
-			
+			Log3 $name, 4, "$ioname: SD_Rollo_Keeloq_Set - check, foreachLoop=$i LearnVersion=$learning" if ((defined $cmd2 && $learning eq "old") || (defined $cmd2 && $learning eq "new"));
+
 			if ($addGroups ne "") {
 				@channel_from_addGroups = split(" ", $addGroups);
 				foreach my $found (@channel_from_addGroups){
@@ -467,6 +495,7 @@ sub SD_Rollo_Keeloq_Set($$$@) {
 
 			### Zusammenführen
 			my $bits = reverse (sprintf("%032b", $encoded)).reverse($jaro_channels{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
+			$Repeats = 20 if ($cmd eq "shade");			# special, command shade = 20 repeats
 			my $msg = "P87#$bits"."P#R".$Repeats;
 
 			Log3 $name, 5, "$ioname: SD_Rollo_Keeloq_Set - Channel                   = $channel";
