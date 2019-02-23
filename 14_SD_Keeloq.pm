@@ -751,8 +751,8 @@ sub SD_Keeloq_Parse($$) {
 		}
 	### Roto ###
 	} elsif ($model eq "Roto" || $model eq "Waeco_MA650_TX") {
-		$VLOW = reverse (substr ($bitData , 64 , 1));
-		$RPT = reverse (substr ($bitData , 65 , 1));	
+		$VLOW = substr($bitData , 64 , 1);
+		$RPT = substr ($bitData , 65 , 1);
 
 		my $binsplit = SD_Keeloq_binsplit_Roto($bitData);
 
@@ -913,6 +913,8 @@ sub SD_Keeloq_Parse($$) {
 	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - user_info                            = $info";
 	Log3 $name, 5, "######## DEBUG END ########\n";
 
+	$VLOW = $VLOW eq "0" ? "ok" : "low" if (defined $VLOW);		# only chip HCS301 - Roto | Waeco_MA650_TX
+	$RPT = $RPT eq "0" ? "no" : "yes" if (defined $RPT);			# only chip HCS301 - Roto | Waeco_MA650_TX
 
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "button", $button);
@@ -921,8 +923,8 @@ sub SD_Keeloq_Parse($$) {
 	readingsBulkUpdate($hash, "channel_control", $group_value) if (defined $group_value);		# JaroLift
 	readingsBulkUpdate($hash, "counter_receive", $counter_decr) if (defined $counter_decr);
 	readingsBulkUpdate($hash, "last_digits", $bit8to15) if (defined $bit8to15);							# JaroLift
-	readingsBulkUpdate($hash, "indicator_repeat", $RPT) if (defined $RPT);									# Roto | Waeco_MA650_TX
-	readingsBulkUpdate($hash, "indicator_voltage_LOW", $VLOW) if (defined $VLOW);						# Roto | Waeco_MA650_TX
+	readingsBulkUpdate($hash, "repeat_message", $RPT) if (defined $RPT);										# Roto | Waeco_MA650_TX
+	readingsBulkUpdate($hash, "batteryState", $VLOW) if (defined $VLOW);										# Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "serial_receive", $serialWithoutCh, 0);
 	readingsBulkUpdate($hash, "state", $state);
 	readingsBulkUpdate($hash, "user_modus", $modus);
@@ -1388,7 +1390,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		Anzeigeart (UserInterface) in FHEM (Standard:aus)
 		<br>
 		<ul><li>Mehrzeilig:<br>
-		Ausgewählte Anzahl an Kanälen wird Tabellarisch statt des STATE-Icons angezeigt</li>
+		Ausgewählte Anzahl an Kanälen wird tabellarisch statt des STATE-Icons angezeigt</li>
 		<li>Einzeilig:<br>
 		Es wird nur eine Zeile mit einem Auswahlfeld für den Kanal angezeigt.</li>
 		<li>aus:<br>
@@ -1413,7 +1415,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li>
 		<br>
 		<li><a name="Repeats"><b>Repeats</b></a><br>
-		Mit diesem Attribut kann angepasst werden, wie viele Wiederholungen sendet werden. (Standard 3)
+		Mit diesem Attribut kann angepasst werden, wie viele Wiederholungen gesendet werden. (Standard 3)
 		</li>
 	</ul>
 	<br><br>
