@@ -1211,9 +1211,22 @@ sub SD_Keeloq_attr2html($@) {
 	### Einzeilig ###
 	if ($UI eq "Einzeilig") {
 		if (not exists $attr{$name}{ChannelFixed}) {
-			$html = "<div><table class=\"block wide\"><tr><td>"; 
+			$html = '
+			<script>
+
+			/* page refresh */
+			function refresh() {
+				setTimeout("location.reload(true);", 250);
+			}			
+
+			</script>';
+			$html.= "<div><table class=\"block wide\"><tr><td>"; 
 			my $changecmd = "cmd.$name=setreading $name DDSelected ";
-			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
+			#$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
+			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
+			#                                              FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
+			#/* FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
+			
 			foreach my $rownr (1..$Channels) {
 				if ($DDSelected eq "$rownr"){
 					$html.= "<option selected value=".($rownr).">".($ChName[$rownr-1])."</option>";
