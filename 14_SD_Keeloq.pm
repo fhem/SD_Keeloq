@@ -1290,7 +1290,8 @@ function SD_Keeloq_updateAll(html) {
       xhr.responseType = 'text';
       xhr.send();
     };
-    getHTML( 'http://192.168.204.128:8083/fhem?XHR=1&cmd.Rollo=get%20Rollo%20html', function (response) {
+	
+    getHTML( '$FW_ME$FW_subdir?XHR=1&cmd.$name=get%20$name%20html', function (response) {
       document.getElementById('SD_Keeloq_ALLHTML').innerHTML = response;
     });
     
