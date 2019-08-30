@@ -1194,7 +1194,7 @@ sub SD_Keeloq_attr2html($@) {
 			my $grpName = $grpInfo[0];
 			$html.= "<tr><td>";
 			$html.= $grpName."</td>";
-			$html.= SD_Keeloq_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, 0, 0);
+			$html.= SD_Keeloq_attr2htmlButtons($grpInfo[1], $name, $ShowIcons, $ShowShade, 0);
 			$html.= "</tr>";
 		}
 
