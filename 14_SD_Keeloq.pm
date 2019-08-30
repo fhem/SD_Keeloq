@@ -107,6 +107,9 @@ sub SD_Keeloq_Initialize() {
 	$hash->{FW_detailFn}	= "SD_Keeloq::summaryFn";
 	$hash->{FW_addDetailToSummary}	= 1;
 	$hash->{FW_deviceOverview}			= 1;
+  
+  #Neu, um einen "versteckten Get-Befehl zu haben
+  $hash->{GetFn}				= "SD_Keeloq::Get";
 }
 
 ###################################
@@ -192,7 +195,7 @@ sub Attr(@) {
 
 	if ($init_done == 1) {
 		if ($cmd eq "set") {
-			if (($attrName eq "MasterLSB" && $MasterMSB ne "") || ($attrName eq "MasterMSB" && $MasterLSB ne "")) {
+      if (($attrName eq "MasterLSB" && $MasterMSB ne "") || ($attrName eq "MasterMSB" && $MasterLSB ne "")) {
 					if ($Serial_send eq "") {
 						readingsSingleUpdate($hash, "user_info", "messages can be received!", 1);
 						readingsSingleUpdate($hash, "user_modus", "limited_functions", 1);
@@ -333,8 +336,33 @@ sub Set($$$@) {
 	my $buttonbits;			#	Buttonbits
 	my $button;					#	Buttontext
 
+  
+  # Über diesen Set-Befehl wird die Aktualisierung vorgenommen.
+  # $html wird nicht benötigt, dies war nur ein Versuch, das HTML direkt zu übergeben.
+  # Leider geht dies nicht...sobald ein /" oder eine neue Zeile im $html -> FHEM Error
+  if ($cmd eq "setHTML"){
+    #my $html = SD_Keeloq_getHTML($hash);
+    #$html =~ s/{/XXX/g;
+    #$html =~ s/}/XXX/g;
+    my $html= "TEST";
+    my $Script=<<"EOF";
+if (typeof SD_Keeloq_updateAll === "function") {
+  SD_Keeloq_updateAll("$html");
+}             
 
-	### Einzeilig mit Auswahlfeld ###
+EOF
+    #Über FW_directNotify wird das JavaScript ausgeführt
+    #Es muss zwingend "main::" funktion verwendet werden, da sonst die Routinen nicht gefunden werden! -> FHEM Absturz
+    #Es darf kein Raumfilter gesetzt werden, da sonst in der Detailansicht keine Aktualisierung erfolgt!
+    
+    #Da die Funktion "SD_Keeloq_updateAll" nur auf den Tabs vorhanden ist, wo unser HTML angezeigt wird, muss mittels
+    #if (typeof SD_Keeloq_updateAll === "function") {
+    #geprüft werden, ob diese Funktion überhaupt vorhanden ist. (Sonst Fehlermeldung auf allen anderen Tabs, die diese Funktion nicht besitzen!)
+    { map { main::FW_directNotify("FILTER=.*", "#FHEMWEB:$_", "$Script", "") } main::devspec2array("TYPE=FHEMWEB") }
+    return;
+  }
+  
+  ### Einzeilig mit Auswahlfeld ###
 	if ($a[0] eq "OptionValue") {
 		$a[0] = $hash->{READINGS}{DDSelected}{VAL};
 	}
@@ -1138,6 +1166,28 @@ sub summaryFn($$$$) {
 }
 
 #####################################
+# Neue Funktion, um den HTML-Code zu bekommen
+sub SD_Keeloq_getHTML($) {
+  my $hash   = shift;
+  my $name = $hash->{NAME};
+  return SD_Keeloq_attr2html($name, $hash);
+}
+
+#####################################
+sub Get ($$@)
+{
+	my ( $hash, $name, $opt, @args ) = @_;
+  #HTML-Code ausgeben per Get-Befehl
+  #Dieser Get-Befehl ist nicht über die FHEM-Oberfläche erreichbar ("versteckt")
+	if($opt eq "html") {
+      return SD_Keeloq_getHTML($hash);
+  } else {
+    return;
+  }
+  return;
+}
+
+#####################################
 # Create HTML-Code
 sub SD_Keeloq_attr2html($@) {
 	my ($name, $hash) = @_;
@@ -1211,19 +1261,63 @@ sub SD_Keeloq_attr2html($@) {
 	### Einzeilig ###
 	if ($UI eq "Einzeilig") {
 		if (not exists $attr{$name}{ChannelFixed}) {
-			$html = '
-			<script>
-
-			/* page refresh */
-			function refresh() {
-				setTimeout("location.reload(true);", 250);
-			}			
-
-			</script>';
+			
+      #Script zum aktualisieren
+      #der Parameter html ist überflüssig. Siehe oben.
+      #
+      $html = <<"EOF";
+<script>
+function SD_Keeloq_updateAll(html) {
+  var elem = document.getElementById('SD_Keeloq_ALLHTML');
+  if (typeof(elem) != 'undefined' && elem != null)
+  {
+    //Dies klapp tso nicht und schmeißt beim Laden der Seite fehler:
+    //$.ajax({ url: 'http://192.168.204.128:8083/fhem?XHR=1&cmd.Rollo=get%20Rollo%20html', success: function(data) { alert(data); } });
+    
+    var getHTML = function ( url, callback ) {
+      // Feature detection
+      if ( !window.XMLHttpRequest ) return;
+      // Create new request
+      var xhr = new XMLHttpRequest();
+      // Setup callback
+      xhr.onload = function() {
+        if ( callback && typeof( callback ) === 'function' ) {
+          callback( this.response );
+        }
+      }
+      // Get the HTML
+      xhr.open( 'GET', url );
+      xhr.responseType = 'text';
+      xhr.send();
+    };
+    getHTML( 'http://192.168.204.128:8083/fhem?XHR=1&cmd.Rollo=get%20Rollo%20html', function (response) {
+      document.getElementById('SD_Keeloq_ALLHTML').innerHTML = response;
+    });
+    
+    //Der ursprüngliche Plan...HTML an Function übergeben und einfach einfügen...
+    // document.getElementById('SD_Keeloq').innerHTML=html;
+  }
+}
+</script>
+<!-- Neue Div mit dem Inhalt. Dies wird beim Aktualisieren kpl. ausgetauscht -->
+<div id="SD_Keeloq_ALLHTML">
+EOF
+      
 			$html.= "<div><table class=\"block wide\"><tr><td>"; 
-			my $changecmd = "cmd.$name=setreading $name DDSelected ";
-			#$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
-			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
+      
+      my $changecmd = "cmd.$name=setreading $name DDSelected ";
+      #2. Command -> Aktualisieren
+      #Könnte man auch vereinfachen, indem masn hier auch gleich die Auswahl mitgibt und das Reading dort setzt...
+      my $changecmd2 = "cmd.$name=set $name setHTML ";
+		
+      #Beide commands absetzen bei Änderung:
+      $html.= "<select name=\"val.$name\" onchange=\"
+      FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value);
+      FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd2 ' + this.options[this.selectedIndex].value)
+      \">";
+      
+      #$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
+			#$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
 			#                                              FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
 			#/* FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
 			
@@ -1248,7 +1342,7 @@ sub SD_Keeloq_attr2html($@) {
 
 			$html.= "</select></td>";
 			$html.= SD_Keeloq_attr2htmlButtons($DDSelected, $name, $ShowIcons, $ShowShade, $ShowLearn);
-			$html.= "</table></div>";
+			$html.= "</table></div></div>";
 		}
 
 		### Einzeilig with attrib ChannelFixed ###
