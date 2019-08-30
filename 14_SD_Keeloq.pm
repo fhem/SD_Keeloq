@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 32 2019-08-20 12:00:00Z v3.4-dev_02.12. $
+# $Id: 14_SD_Keeloq.pm 32 2019-08-30 12:00:00Z v3.4-dev_02.12. $
 #
 # The file is part of the SIGNALduino project.
 # The purpose of this module is support for KeeLoq devices.
@@ -24,7 +24,7 @@ my %models = (
 															"stop"				=>	"0100",	# new LearnVersion (2)
 															"down"				=>	"0010",
 															"learn"				=>	"0001",	# old LearnVersion
-															"shade"				=>	"0101", # 20x stop	(stop with 20x repeats) mod to 15 repeats after test
+															"shade"				=>	"0100", # 20x stop	(stop with 20x repeats) mod to 15 repeats after test | old 0101
 															"shade_learn"	=>	"",			# 4x stop		(stop 4x push)
 															"updown"			=>	"1010"	# new LearnVersion (1)
 														},
