@@ -24,7 +24,7 @@ my %models = (
 															"stop"				=>	"0100",	# new LearnVersion (2)
 															"down"				=>	"0010",
 															"learn"				=>	"0001",	# old LearnVersion
-															"shade"				=>	"0101", # 20x stop	(stop with 20x repeats)
+															"shade"				=>	"0101", # 20x stop	(stop with 20x repeats) mod to 15 repeats after test
 															"shade_learn"	=>	"",			# 4x stop		(stop 4x push)
 															"updown"			=>	"1010"	# new LearnVersion (1)
 														},
@@ -564,7 +564,7 @@ sub Set($$$@) {
 
 				### Zusammenführen
 				my $bits = reverse (sprintf("%032b", $encoded)).reverse($models{$model}{Channel}{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
-				$Repeats = 20 if ($cmd eq "shade");			# special, command shade = 20 repeats
+				$Repeats = 15 if ($cmd eq "shade");			# special, command shade = 20 repeats = 2,34 s / 15 = 1,75s / userreport: 12 repeats ok
 				my $msg = "P87#$bits"."P#R".$Repeats;
 
 				Log3 $name, 5, "$ioname: SD_Keeloq_Set - Channel                   = $channel";
