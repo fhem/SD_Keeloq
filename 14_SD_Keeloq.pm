@@ -1223,8 +1223,6 @@ sub SD_Keeloq_attr2html($@) {
 
 			#$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
 			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
-			#                                              FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
-			#/* FW_cmd(FW_root+ \'?XHR=1"'.$FW_CSRF.'"&cmd={FW_Checkbox_Values("'.$name.'","\'+myDropdown.value+\'")}&XHR=1\', function(data){location.reload()}); */
 			
 			foreach my $rownr (1..$Channels) {
 				if ($DDSelected eq "$rownr"){
