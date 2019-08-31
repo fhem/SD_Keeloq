@@ -1214,7 +1214,7 @@ sub SD_Keeloq_attr2html($@) {
 			<script>
 			/* page refresh */
 			function refresh() {
-				setTimeout("location.reload(true);", 100);
+				setTimeout("location.reload(true);", 10);
 			}			
 			</script>';
 
