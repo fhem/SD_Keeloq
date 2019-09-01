@@ -217,8 +217,16 @@ sub Attr(@) {
 					$attr{$name}{ChannelNames} = $attrValue;
 				}
 
-				if ($attrName eq "Channels" && $attrValue == 0 && $addGroups eq "") {
-					return "ERROR: you can use Channels = $attrValue only with defined attribut addGroups!";
+				if ($attrName eq "Channels") {
+					my $Channels = AttrVal($name, "Channels", "");
+					return "ERROR: you can use Channels = $attrValue only with defined attribut addGroups!" if ($attrValue == 0 && $addGroups eq "");
+					if ($Channels > $attrValue) {
+						foreach my $d (sort keys %{$hash->{READINGS}}) {
+							if ($d =~ /^LastAction_Channel_(\d+)/) {
+								readingsDelete($hash, $d) if ($1 > $attrValue);
+							}
+						}
+					}
 				}
 
 				if ($attrName eq "UI" && $attrValue eq "Einzeilig" && not exists $attr{$name}{Channels} && not exists $attr{$name}{ChannelFixed}) {
@@ -457,7 +465,7 @@ sub Set($$$@) {
 
 				$button = $cmd;
 				$buttonbits = $models{$model}{Button}{$cmd} if ($cmd ne "shade");
-				$buttonbits = $models{$model}{Button}{stop} if ($cmd eq "shade"); ### fix for Status shade - need usertests! https://github.com/HomeAutoUser/SD_Keeloq__old_Jaro/issues/9#issuecomment-526834923
+				$buttonbits = $models{$model}{Button}{stop} if ($cmd eq "shade");		# for status shade
 				my $learning_text = $learning eq "old" ? "send learn" : "send updown and additionally followed stop"; 
 				Log3 $name, 4, "$ioname: SD_Keeloq_Set - check, foreachLoop=$i LearnVersion=$learning ($learning_text)" if ((defined $cmd2 && $learning eq "old") || (defined $cmd2 && $learning eq "new"));
 
@@ -586,7 +594,7 @@ sub Set($$$@) {
 				Log3 $name, 5, "$ioname: SD_Keeloq_Set - Counter                   = $counter_send";
 				Log3 $name, 5, "$ioname: SD_Keeloq_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
 
-				my $binsplit = SD_Keeloq_binsplit_JaroLift($bits);
+				my $binsplit = SD_Keeloq_binsplit_JaroLift($bits) if (AttrVal($name, "verbose", "3") eq "5");
 
 				Log3 $name, 5, "$ioname: SD_Keeloq_Set                                           encoded     <- | ->     decrypts";
 				Log3 $name, 5, "$ioname: SD_Keeloq_Set                       Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
@@ -777,7 +785,7 @@ sub Parse($$) {
 		($bit8to15) = @_ = ( reverse (substr ($bitData , 8 , 8)) , "encrypted" )[$encrypted];			# without MasterMSB | MasterLSB encrypted
 		$bit64to71 = reverse (substr ($bitData , 64 , 8));
 
-		$binsplit = SD_Keeloq_binsplit_JaroLift($bitData);
+		$binsplit = SD_Keeloq_binsplit_JaroLift($bitData) if (AttrVal($name, "verbose", "3") eq "5");
 
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - typ = $model";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                                 encoded     <- | ->     decrypts";
