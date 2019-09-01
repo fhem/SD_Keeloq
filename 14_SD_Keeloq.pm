@@ -1218,11 +1218,24 @@ sub SD_Keeloq_attr2html($@) {
 			}			
 			</script>';
 
-			$html.= "<div><table class=\"block wide\"><tr><td>";
+			my $script = <<"EOF";
+			<script>
+	function SD_Keeloq_SetChannel(Name, Direction){
+		var e = document.getElementById("($name)_SD_Keeloq_OptionValue");
+		var channel = e.options[e.selectedIndex].value;
+		FW_cmd('$FW_ME$FW_subdir?XHR=1&cmd.$name=set ' + Name + ' ' + Direction + ' ' + channel);
+		alert('Channel ' + channel); 
+	}	
+	</script>
+	
+EOF
+
+			$html.= "$script<div><table class=\"block wide\"><tr><td>";
 			my $changecmd = "cmd.$name=setreading $name DDSelected ";
 
 			#$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
-			$html.= "<select name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
+			#$html.= "<select id=\"SD_Keeloq_OptionValue\" name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value,function(data){refresh()})\">";
+			$html.= "<select id=\"($name)_SD_Keeloq_OptionValue\" name=\"val.$name\" onchange=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$changecmd ' + this.options[this.selectedIndex].value)\">";
 			
 			foreach my $rownr (1..$Channels) {
 				if ($DDSelected eq "$rownr"){
@@ -1265,30 +1278,52 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	my ($channel, $name, $ShowIcons, $ShowShade, $ShowLearn) = @_;		# $name = name of device | $channel = 1 ... 16 or channelgroup example 2,4
 	my $html = "";
 
+			
+	my $useJavaScript = 0;
+	my $UI = AttrVal($name, "UI", "aus");
+	if ($UI eq "Einzeilig") {
+		if (not exists $attr{$name}{ChannelFixed}) {
+			$useJavaScript = 1;
+		}
+	}
+	# Könnte noch vereinfacht werden, wenn immer JavaScript verwendet wird.
+	# ggf. könnte im JavaScript geprüft werden, ob ein DropDown button existiert -> Diesen wert verwenden
 	### UP
 	my $cmd = "cmd.$name=set $name up $channel";
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Hoch</a></td>" if (!$ShowIcons);
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_up")."</a></td>" if ($ShowIcons == 1);
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_up")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','up')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 1));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','up')\">".FW_makeImage("fts_shutter_up")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 1));
 
 	### STOP
 	$cmd = "cmd.$name=set $name stop $channel";
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Stop</a></td>" if (!$ShowIcons);
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("rc_STOP")."</a></td>" if ($ShowIcons == 1);
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Stop</a></td>" if ((!$ShowIcons) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("rc_STOP")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','stop')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 1));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','stop')\">".FW_makeImage("rc_STOP")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 1));
 
 	### DOWN
 	$cmd = "cmd.$name=set $name down $channel";
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Runter</a></td>" if (!$ShowIcons);
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_down")."</a></td>" if ($ShowIcons == 1);
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Runter</a></td>" if ((!$ShowIcons) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_down")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','down')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 1));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','down')\">".FW_makeImage("fts_shutter_down")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 1));
 
 	### SHADE
 	$cmd = "cmd.$name=set $name shade $channel";
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Beschattung</a></td>" if (($ShowShade) && (!$ShowIcons));
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_shadding_run")."</a></td>" if ($ShowIcons == 1 && $ShowShade == 1);
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Beschattung</a></td>" if (($ShowShade) && (!$ShowIcons) && ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_shadding_run")."</a></td>" if ($ShowIcons == 1 && $ShowShade == 1 && $useJavaScript == 0);
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','shade')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 1));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','shade')\">".FW_makeImage("fts_shutter_shadding_run")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 1));
+
 
 	### LEARN
 	$cmd = "cmd.$name=set $name learn $channel";
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Lernen</a></td>" if (($ShowLearn) && (!$ShowIcons));
-	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_manual")."</a></td>" if ($ShowIcons == 1 && $ShowLearn == 1);
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">Lernen</a></td>" if (($ShowLearn) && (!$ShowIcons) && ($useJavaScript == 0));
+	$html.= "<td><a onClick=\"FW_cmd('$FW_ME$FW_subdir?XHR=1&$cmd')\">".FW_makeImage("fts_shutter_manual")."</a></td>" if ($ShowIcons == 1 && $ShowLearn == 1 && $useJavaScript == 0);
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','learn')\">Hoch</a></td>" if ((!$ShowIcons) and ($useJavaScript == 1));
+	$html.= "<td><a onClick=\"SD_Keeloq_SetChannel('$name','learn')\">".FW_makeImage("fts_shutter_manual")."</a></td>" if (($ShowIcons == 1) and ($useJavaScript == 1));
+
 
 	return $html;
 }
