@@ -20,13 +20,13 @@ use POSIX;
 use Data::Dumper qw (Dumper);
 
 my %models = (
-	"enjoy_motors_HS-8" => {	Button => {	"stop"  =>  "1000",
-																				"up"    =>  "1010",
-																				"down"	=>  "1100"
-																	},
-														Protocol 	=> "P88",
-														Typ				=> "remote"
-													},
+	"enjoy_motors_HS" => {	Button => {	"stop"  =>  "1000",
+																			"up"    =>  "1010",
+																			"down"	=>  "1100"
+																		},
+													Protocol 	=> "P88",
+													Typ				=> "remote"
+												},
 	"JaroLift" =>	{	Button => { "up"					=>	"1000",	# button
 															"stop"				=>	"0100",	# button - for learn (LearnVersion new, step 2)
 															"down"				=>	"0010",	# button
@@ -417,8 +417,8 @@ sub Set($$$@) {
 				}
 			}
 		}
-	### Typ enjoy_motors_HS-8 || PR3_4207_002 || RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
-	} elsif ($model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX" || $model eq "enjoy_motors_HS-8") {
+	### Typ enjoy_motors_HS || PR3_4207_002 || RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
+	} elsif ($model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX" || $model eq "enjoy_motors_HS") {
 		return "ERROR: no set value specified!" if(int(@a) != 1);
 	}
 
@@ -759,7 +759,7 @@ sub Parse($$) {
 	my $channel;
 	my $channel_bin;
 
-	### enjoy_motors_HS-8 | PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX only ###
+	### enjoy_motors_HS | PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX only ###
 	my $bit0to15;
 	my $bit16to27;
 	my $bit28to31;
@@ -822,7 +822,7 @@ sub Parse($$) {
 			$channel_bin = $models{$model}{Channel}{$keys} if ($keys eq $channel);
 		}
 	### PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
-	} elsif ($model eq "enjoy_motors_HS-8" || $model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
+	} elsif ($model eq "enjoy_motors_HS" || $model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
 		$VLOW = substr ($bitData , 64 , 1);
 		$RPT = substr ($bitData , 65 , 1);
 
@@ -1324,7 +1324,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	- KeeLoq is a registered trademark of Microchip Technology Inc.-<br><br>
 
 	<u>The following devices are supported:</u><br>
-	<ul> - enjoy motors HS-8 remote &nbsp;&nbsp;&nbsp;<small>(model: enjoy_motors_HS-8 | protocol 88)</small><br></ul>
+	<ul> - enjoy_motors_HS remote &nbsp;&nbsp;&nbsp;<small>(model: enjoy_motors_HS | protocol 88)</small><br></ul>
 	<ul> - JaroLift radio wall transmitter (example: TDRC 16W / TDRCT 04W)&nbsp;&nbsp;&nbsp;<small>(model: JaroLift | protocol 87)</small><br></ul>
 	<ul> - RADEMACHER remote with two button&nbsp;&nbsp;&nbsp;<small>(model: RP_S1_HS_RF11 | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<ul> - Roto remote with three button&nbsp;&nbsp;&nbsp;<small>(model: Roto | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
@@ -1332,7 +1332,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul> - Waeco_MA650_TX remote with two button&nbsp;&nbsp;&nbsp;<small>(model: Waeco_MA650_TX | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<br>
 	<b><i>Each model has a different length of the serial number! Please enter the serial number in hexadecimal.<br>
-	For the models enjoy motors / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX the length is 7 and for the model JaroLift 6.</i></b>
+	For the models enjoy_motors_HS / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX the length is 7 and for the model JaroLift 6.</i></b>
 	<br><br><br>
 
 	<b>Define</b><br>
@@ -1447,7 +1447,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li>
 	</ul>
 	<br><br>
-	<b>Generated shared readings | enjoy_motors_HS-8 / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
+	<b>Generated shared readings | enjoy_motors_HS / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
 	<ul>
 	<li>button<br>
 	Pressed button on the remote control or in the FHEM device</li>
@@ -1489,7 +1489,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	- KeeLoq is a registered trademark of Microchip Technology Inc.-<br><br>
 
 	<u>Es werden bisher folgende Ger&auml;te unterst&uuml;tzt:</u><br>
-	<ul> - enjoy motors HS-8 Fernbedienung&nbsp;&nbsp;&nbsp;<small>(Modulmodel: enjoy_motors_HS-8 | Protokoll 88)</small><br></ul>
+	<ul> - enjoy motors HS Fernbedienung&nbsp;&nbsp;&nbsp;<small>(Modulmodel: enjoy_motors_HS | Protokoll 88)</small><br></ul>
 	<ul> - JaroLift Funkwandsender (Bsp: TDRC 16W / TDRCT 04W)&nbsp;&nbsp;&nbsp;<small>(Modulmodel: JaroLift | Protokoll 87)</small><br></ul>
 	<ul> - RADEMACHER Fernbedienung mit 2 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: RP_S1_HS_RF11 | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<ul> - Roto Fernbedienung mit 3 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: Roto | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
@@ -1497,7 +1497,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul> - Waeco_MA650_TX Fernbedienung mit 2 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: Waeco_MA650_TX | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<br>
 	<b><i>Jedes Model besitzt eine andere L&auml;nge der Seriennummer! Bitte geben Sie die Serialnummer hexadezimal ein.<br>
-	Bei den Modellen enjoy motors / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX ist die L&auml;nge jeweils 7 und bei dem Model JaroLift 6.</i></b>
+	Bei den Modellen enjoy_motors_HS / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX ist die L&auml;nge jeweils 7 und bei dem Model JaroLift 6.</i></b>
 	<br><br><br>
 
 	<b>Define</b><br>
@@ -1612,7 +1612,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li>
 	</ul>
 	<br><br>
-	<b>Generierte gemeinsamgenutzte Readings | enjoy motors / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
+	<b>Generierte gemeinsamgenutzte Readings | enjoy_motors_HS / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
 	<ul>
 	<li>button<br>
 	Gedr&uuml;ckter Knopf an der Fernbedienung oder im FHEM Device</li>
