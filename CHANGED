@@ -1,3 +1,7 @@
+2020-01-15 - Update 14_SD_Keeloq.pm
+
+- added enjoy_motors_HS option to send if user receive bitMSG
+- added some doc
 2020-01-14 - Automaitc updated controls and CHANGED
 2020-01-12 - Update 14_SD_Keeloq.pm
 
