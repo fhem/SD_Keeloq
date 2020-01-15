@@ -15,5 +15,5 @@ update all https://raw.githubusercontent.com/fhem/SD_Keeloq/master/controls_SD_K
 
 # How to receive or send the SD_Keeloq radio signal
 
-You need a SIGNALduino.
-Look at the FHEM Wiki, for more Information: http://www.fhemwiki.de/wiki/SIGNALDuino Forum thread is at: 
+You need a SIGNALduino and know the keys.
+Look at the FHEM Wiki, for more Information: http://www.fhemwiki.de/wiki/SIGNALDuino Forum thread is at: http://forum.fhem.de/index.php/topic,38831.0.html
