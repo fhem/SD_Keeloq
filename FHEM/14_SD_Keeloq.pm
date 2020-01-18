@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 32 2020-01-15 09:56:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 32 2020-01-18 09:56:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -122,6 +122,10 @@ sub SD_Keeloq_Initialize() {
 	$hash->{FW_detailFn}	= "SD_Keeloq::summaryFn";
 	$hash->{FW_addDetailToSummary}	= 1;
 	$hash->{FW_deviceOverview}			= 1;
+	$hash->{AutoCreate} =
+	{ 
+		"SD_Keeloq_.*" => { ATTR => "event-min-interval:.*:300 event-on-change-reading:.*", FILTER => "%NAME", autocreateThreshold => "3:180"}
+	};	
 }
 
 ###################################
@@ -677,6 +681,8 @@ sub Set($$$@) {
 			my $R = substr(InternalVal($name, "bitMSG", undef),65,1);
 			my $padding = substr(InternalVal($name, "bitMSG", undef),66,2);
 			my $length_bitMSG = length(InternalVal($name, "bitMSG", undef));
+			my $bits_32to64;
+			my $bits_65to68;
 
 			Log3 $name, 4, "######## DEBUG SET - START ########";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - cmd=$cmd";
@@ -686,16 +692,21 @@ sub Set($$$@) {
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits               = $serialbits";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits reverse       = $serialbits_rev";
 			$bits.= $serialbits_rev;
+			$bits_32to64.= $serialbits_rev;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button                    = $button";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits               = $buttonbits";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits reverse       = $buttonbits_rev";
 			$bits.= $buttonbits_rev;
+			$bits_32to64.= $buttonbits_rev;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Voltage LOW indicator (V) = $V";
 			$bits.= $V;
+			$bits_65to68.= $V;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Repeat indicator (R)      = $R";
 			$bits.= $R;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Padding_bits              = $padding\n";
+			$bits_65to68.= $R;
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Padding bits (SD intern)  = $padding\n";
 			$bits.= $padding;
+			$bits_65to68.= $padding;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set                                  encoded     <- | ->     decrypts";
 			Log3 $name, 4, "$ioname: SD_Keeloq_set - should (HCS301),   sync cnt |discriminat.| bt |           serial           | bt |V|R|padding";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - is device,          encoded (Rolling code)    |           serial           | bt |V|R|padding";
@@ -706,11 +717,22 @@ sub Set($$$@) {
 				$bits_split.= " " if ($i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65);
 			}
 
-			my $msg = $models{$model}{Protocol}."#$bits"."P#R".$Repeats;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG     = $msg";
 
-			IOWrite($hash, 'sendMsg', $msg);
+			my $msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b$bits_32to64" ) ).sprintf("%01X", oct( "0b$bits_65to68" ) )."#R1";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG (intern) = $msg";
+
+			my $msg_build = substr($bits,0,- length($padding));
+			$msg_build =~ s/0/42/g;
+			$msg_build =~ s/1/15/g;
+			$msg_build = "SR;;R=".$Repeats.";;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213".$msg_build.";;";
+
+			# org,      set nano_433Mhz raw SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
+			# rebuild,  set nano_433Mhz raw SR;;R=3;;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151542;;
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG (build)  = $msg_build";
+			$msg_build =~ s/;+/;/g;
+
+			IOWrite($hash, 'raw', $msg_build);
 
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "button", $button, 1);
@@ -915,7 +937,8 @@ sub Parse($$) {
 
 		my $binsplit = SD_Keeloq_binsplit_Roto($bitData);
 
-		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - typ = $model";
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - model = $model";
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - DMSG  = P".$protocol."#".InternalVal($name, "lastMSG", undef);
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                                encoded     <- | ->     decrypts";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
