@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 16:00:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 16:11:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -224,13 +224,13 @@ sub Attr(@) {
 				if ($attrName eq "addGroups") {
 					return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_\-äÄüÜöÖ:,\s]+[^,.:\D]$/s);
 					SD_Keeloq_translate($attrValue);
-					$attr{$name}{addGroups} = $attrValue;
+					CommandAttr($hash,"$name addGroups $attrValue");
 				}
 
 				if ($attrName eq "ChannelNames") {
 					return "ERROR: wrong $attrName syntax! [only a-z | umlauts | numbers | , | _ | - | ]\nexample: South,North" if not ($attrValue =~ /\A[a-zA-Z\d,_-äÄüÜöÖ\s]+\Z/s);
 					SD_Keeloq_translate($attrValue);
-					$attr{$name}{ChannelNames} = $attrValue;
+					CommandAttr($hash,"$name ChannelNames $attrValue");
 				}
 
 				if ($attrName eq "Channels") {
@@ -319,7 +319,7 @@ sub Attr(@) {
 			}
 
 			if ($attrName eq "addGroups" && $attr{$name}{Channels} == 0) {
-				$attr{$name}{Channels} = 1;
+				CommandAttr($hash,"$name Channels 1");
 			}
 		}
 
