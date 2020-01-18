@@ -722,16 +722,19 @@ sub Set($$$@) {
 			my $msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b$bits_32to64" ) ).sprintf("%01X", oct( "0b$bits_65to68" ) )."#R1";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG (intern) = $msg";
 
+			# org,      set nano_433Mhz raw SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
+			# rebuild,  set nano_433Mhz raw SR;;R=3;;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
+
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - send (org user) = SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;";
+
 			my $msg_build = substr($bits,0,- length($padding));
 			$msg_build =~ s/0/42/g;
 			$msg_build =~ s/1/15/g;
+			$msg_build = substr($msg_build,0,-3);	 ## unknown
 			$msg_build = "SR;;R=".$Repeats.";;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213".$msg_build.";;";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - send (rebuild)  = $msg_build";
 
-			# org,      set nano_433Mhz raw SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
-			# rebuild,  set nano_433Mhz raw SR;;R=3;;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151542;;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG (build)  = $msg_build";
 			$msg_build =~ s/;+/;/g;
-
 			IOWrite($hash, 'raw', $msg_build);
 
 			readingsBeginUpdate($hash);
@@ -944,6 +947,7 @@ sub Parse($$) {
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
 
+		$channel = hex(substr($serial,-1)) + 1;
 		$buttonbits = $button;
 		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};					# search buttontext --> buttons
 		$bit0to15 = reverse (substr ($bitData , 0 , 16));
