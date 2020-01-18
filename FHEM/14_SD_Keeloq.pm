@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 17:11:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 19:35:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -727,22 +727,18 @@ sub Set($$$@) {
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
 
 			my $msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b$bits_32to64" ) ).sprintf("%01X", oct( "0b$bits_65to68" ) )."#R1";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG (intern) = $msg";
+			Log3 $name, 3, "$ioname: SD_Keeloq_Set - sendMsg (hex) = $msg";
 
 			# org,      set nano_433Mhz raw SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
 			# rebuild,  set nano_433Mhz raw SR;;R=3;;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
 
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - send (org user) = SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;";
+			#Log3 $name, 4, "$ioname: SD_Keeloq_Set - send (org user) = SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;";
 
-			my $msg_build = substr($bits,0,- length($padding));
-			$msg_build =~ s/0/42/g;
-			$msg_build =~ s/1/15/g;
-			$msg_build = substr($msg_build,0,-3);	 ## unknown
-			$msg_build = "SR;;R=".$Repeats.";;P0=-15600;;P1=400;;P2=-400;;P3=-4000;;P4=800;;P5=-800;;D=0121212121212121212121213".$msg_build.";;";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - send (rebuild)  = $msg_build";
+			$bits = "P88#".substr($bits, 0 , -3)."P#R".$Repeats;
+			Log3 $name, 3, "$ioname: SD_Keeloq_Set - sendMsg (bits) = $bits";
 
-			$msg_build =~ s/;+/;/g;
-			IOWrite($hash, 'raw', $msg_build);
+			IOWrite($hash, 'sendMsg', $msg);
+			#IOWrite($hash, 'sendMsg', $bits);
 
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "button", $button, 1);
