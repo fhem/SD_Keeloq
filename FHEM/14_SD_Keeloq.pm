@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 32 2020-01-18 09:56:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 16:00:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -258,7 +258,7 @@ sub Attr(@) {
 				}
 			}
 
-			### Roto | Waeco_MA650_TX###
+			### Roto | Waeco_MA650_TX | unknown ###
 			if ($model eq "Roto" || $model eq "Waeco_MA650_TX" || $model eq "unknown") {
 				if ($attrName eq "addGroups" || $attrName eq "Channels" || $attrName eq "ChannelNames" || $attrName eq "ChannelFixed" || $attrName eq "LearnVersion" || $attrName eq "ShowIcons" || $attrName eq "ShowLearn" || $attrName eq "ShowShade") {
 					return "ERROR: the attribute $attrName are not support on typ $model";
