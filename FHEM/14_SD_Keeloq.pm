@@ -141,6 +141,7 @@ BEGIN {
 	GP_Import(qw(
 		AssignIoPort
 		AttrVal
+		CommandAttr
 		FW_ME
 		FW_makeImage
 		FW_subdir
@@ -189,8 +190,8 @@ sub Define() {
 	my $ioname = $modules{SD_Keeloq}{defptr}{ioname} if (exists $modules{SD_Keeloq}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
 
-	$attr{$name}{room}		= "SD_Keeloq" if ( not exists($attr{$name}{room}) );
-	$attr{$name}{model}		= $model if ( not exists($attr{$name}{model}) );
+	CommandAttr($hash,"$name room SD_Keeloq") if ( not exists($attr{$name}{room}) );
+	CommandAttr($hash,"$name model $model") if ( not exists($attr{$name}{model}) );
 
 	AssignIoPort($hash, $iodevice);
 	return undef;
