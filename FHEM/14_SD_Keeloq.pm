@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 16:11:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 17:11:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -123,9 +123,9 @@ sub SD_Keeloq_Initialize() {
 	$hash->{FW_addDetailToSummary}	= 1;
 	$hash->{FW_deviceOverview}			= 1;
 	$hash->{AutoCreate} =
-	{ 
-		"SD_Keeloq_.*" => { ATTR => "event-min-interval:.*:300 event-on-change-reading:.*", FILTER => "%NAME", autocreateThreshold => "3:180"}
-	};	
+	{
+		"SD_Keeloq_.*" => { ATTR => "event-min-interval:.*:300 event-on-change-reading:.*", FILTER => "%NAME", autocreateThreshold => "3:180", GPLOT => ""},
+	};
 }
 
 ###################################
@@ -257,6 +257,12 @@ sub Attr(@) {
 				if ($attrName eq "Serial_send" && $attrValue !~ /^[0-9a-fA-F]{4}00/) {
 					return "ERROR: your $attrName attribut with value $attrValue is wrong!\nOnly support values with 00 at END!";
 				}
+			}
+
+			### enjoy_motors_HS ###
+			if ($attrValue eq "enjoy_motors_HS") {
+				readingsDelete($hash,"user_info") if (ReadingsVal($name, "user_info", undef));
+				readingsDelete($hash,"user_modus") if (ReadingsVal($name, "user_modus", undef));
 			}
 
 			### Roto | Waeco_MA650_TX | unknown ###
@@ -948,13 +954,14 @@ sub Parse($$) {
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
 
-		$channel = hex(substr($serial,-1)) + 1;
 		$buttonbits = $button;
 		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};					# search buttontext --> buttons
 		$bit0to15 = reverse (substr ($bitData , 0 , 16));
 		$bit16to27 = reverse (substr ($bitData , 16 , 12));
 		$bit28to31 = reverse (substr ($bitData , 28 , 4));
 	}
+
+	$channel = hex(substr($serial,-1)) + 1 if ($model eq "enjoy_motors_HS");
 
 	$serial = oct( "0b$serial" ); ## need to DECODE & view Debug 
 
