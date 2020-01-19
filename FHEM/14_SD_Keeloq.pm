@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 17:40:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 23:43:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -151,13 +151,14 @@ BEGIN {
 		InternalVal
 		Log3
 		ReadingsVal
+		addStructChange
 		addToDevAttrList
 		attr
 		defs
 		delFromDevAttrList
 		init_done
-		perlSyntaxCheck
 		modules
+		perlSyntaxCheck
 		readingsBeginUpdate
 		readingsBulkUpdate
 		readingsDelete
@@ -359,8 +360,14 @@ sub Attr(@) {
 			
 			if ($model eq "enjoy_motors_HS") {
 				if ($attrName eq "model") {
-					delFromDevAttrList($name, "RollingCodes:textField-long") if (AttrVal($name, "userattr", undef) =~ /RollingCodes/);
-					CommandDeleteAttr($hash, "$name RollingCodes") if (AttrVal($name, "RollingCodes", undef));
+					if (AttrVal($name, "RollingCodes", undef)) {
+						CommandDeleteAttr($hash, "$name RollingCodes");
+					}
+
+					if (AttrVal($name, "userattr", undef) =~ /RollingCodes/) {
+						delFromDevAttrList($name, "RollingCodes:textField-long");
+						addStructChange("modify", $name, "$name userattr");          # note with question mark
+					}
 				}
 			}		
 		}
@@ -445,7 +452,7 @@ sub Set($$$@) {
 	### Typ enjoy_motors_HS - without MasterMSB && MasterLSB && KeeLoq_NLF ###
 	## User reports with rolling code it goes to send
 	} elsif ($model eq "enjoy_motors_HS") {
-		if (InternalVal($name, "bitMSG", undef)) {
+		if (InternalVal($name, "bitMSG", undef) || AttrVal($name,"RollingCodes",undef)) {
 			foreach (keys %{$models{$model}{Button}}) {
 				$ret.=" $_:noArg";
 			}
@@ -884,7 +891,6 @@ sub Parse($$) {
 	# 2 bit Padding
 	####################### 34bit
 
-	my $serialHex;
 	my $serialWithoutCh;
 	my $model = "unknown";
 	my $devicedef;
@@ -1026,7 +1032,6 @@ sub Parse($$) {
 
 	if ($model eq "enjoy_motors_HS") {
 		$channel = (sprintf ("%x" , hex(substr($rawData,8,1)) >> 2) + 1);    # verified
-		$serialHex = substr($rawData,8,7);                                   # for check in attr user RollingCode
 	};
 
 	$serial = oct( "0b$serial" ); ## need to DECODE & view Debug 
@@ -1186,7 +1191,6 @@ sub Parse($$) {
 	readingsBulkUpdate($hash, "repeat_message", $RPT) if (defined $RPT);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "batteryState", $VLOW) if (defined $VLOW);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "serial_receive", $serialWithoutCh, 0);
-	readingsBulkUpdate($hash, "serial_from_lastMSG", $serialHex, 0) if ($serialHex);        # enjoy_motors_HS
 	readingsBulkUpdate($hash, "state", $state);
 	readingsBulkUpdate($hash, "user_modus", $modus) if ($model ne "enjoy_motors_HS");
 	readingsBulkUpdate($hash, "user_info", $info) if ($model ne "enjoy_motors_HS");
@@ -1616,6 +1620,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li></ul>
 
 		<br>
+		<u><b>ONLY for the model enjoy_motors_HS!</b></u>
+		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
+		Here the user can store rolling codes which are accepted by the hardware to be controlled.<br>
+		<i><u>example:</u></i><br>
+		<code>
+		{<br>
+			"up" => "P88#0x12345678008B48018#R1",<br>
+			"down" => "P88#0x87654321808B48038#R1",<br>
+		}
+		</code></li>
+
+		<br>
 		<u><b>for all models</b></u>
 		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
 		Key for decoding and encoding. The specification is hexadecimal, 8 digits + leading with 0x.<br>
@@ -1779,6 +1795,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		<li>aus:<br>
 		Es wird nichts angezeigt. (Nur &uuml;ber SET-Befehle steuerbar).
 		</li></ul>
+
+		<br>
+		<u><b>NUR f&uuml;r das Modell enjoy_motors_HS!</b></u>
+		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
+		Hier kann der User RollingCodes hinterlegen welche zum senden akzeptiert werden von der zu steuerndenen Hardware.<br>
+		<i><u>Beispiel:</u></i><br>
+		<code>
+		{<br>
+			"up" => "P88#0x12345678008B48018#R1",<br>
+			"down" => "P88#0x87654321808B48038#R1",<br>
+		}
+		</code></li>
 
 		<br>
 		<u><b>f&uuml;r alle Modelle</b></u>
