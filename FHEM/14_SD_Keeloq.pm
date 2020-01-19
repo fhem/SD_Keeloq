@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 02:00:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 17:40:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -271,7 +271,7 @@ sub Attr(@) {
 
 			if ($model eq "enjoy_motors_HS") {
 				if ($attrName eq "RollingCodes") {
-					return "ERROR: The command must informat { \" \" => \" \" }" if ($attrValue !~ /\s?+{\X+=>\X+}/);
+					return "ERROR: The command must informat { \"down\" => \"P88#0x0123456789ABCDEF0#R1\", }" if ($attrValue !~ /\s?+{\X+=>\X+}/);
 					my $err = perlSyntaxCheck($attrValue, ());   # check PERL Code
 					return $err if($err);
 					
@@ -284,7 +284,12 @@ sub Attr(@) {
 							$attrValue = $av if( ref($av) eq "HASH" );
 						}
 					}
-					$hash->{helper}{RollingCodes} = $attrValue;
+
+					## check, only allowed buttons ##
+					foreach my $d (keys %{$attrValue}) {
+						return "ERROR: your button \"$d\" is not allowed!" if (not grep { /$d/ } keys %{$models{$model}{Button}});
+						return "ERROR: DMSG \"".%{$attrValue}{$d}."\" from button $d contains invalid characters!" if (%{$attrValue}{$d} !~ /^P88#0x[A-Fa-f0-9]+(#R\d)$/);
+					}
 				}
 			}
 
@@ -718,8 +723,7 @@ sub Set($$$@) {
 			my $R = substr(InternalVal($name, "bitMSG", undef),65,1);
 			my $padding = substr(InternalVal($name, "bitMSG", undef),66,2);
 			my $length_bitMSG = length(InternalVal($name, "bitMSG", undef));
-			my $bits_32to64;
-			my $bits_65to68;
+			my $msg = "";
 
 			Log3 $name, 4, "######## DEBUG SET - START ########";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - cmd=$cmd";
@@ -730,35 +734,69 @@ sub Set($$$@) {
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits reverse       = $serialbits_rev";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Channel                   = ".(( oct("0b".substr($serialbits_rev,0,4)) >> 2 * 1) + 1 );
 
-			$bits.= $serialbits_rev;
-			$bits_32to64.= $serialbits_rev;
+			$bits.= $serialbits_rev.$buttonbits_rev.$V.$R.$padding;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button                    = $button";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits               = $buttonbits";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits reverse       = $buttonbits_rev";
-			$bits.= $buttonbits_rev;
-			$bits_32to64.= $buttonbits_rev;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Voltage LOW indicator (V) = $V";
-			$bits.= $V;
-			$bits_65to68.= $V;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Repeat indicator (R)      = $R";
-			$bits.= $R;
-			$bits_65to68.= $R;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Padding bits (SD intern)  = $padding\n";
-			$bits.= $padding;
-			$bits_65to68.= $padding;
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set                                  encoded     <- | ->     decrypts";
-			Log3 $name, 4, "$ioname: SD_Keeloq_set - should (HCS301),   sync cnt |discriminat.| bt |           serial           | bt |V|R|padding";
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - is device,          encoded (Rolling code)    |           serial           | bt |V|R|padding";
 
-			my $bits_split;
-			for my $i(0..($length_bitMSG - 1)){
-				$bits_split.= substr($bits,$i,1);
-				$bits_split.= " " if ($i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65);
+			## if no RollingCodes from user
+			if (!AttrVal($name,"RollingCodes",undef)) {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits               = $buttonbits";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits reverse       = $buttonbits_rev";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Voltage LOW indicator (V) = $V";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Repeat indicator (R)      = $R";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Padding bits (SD intern)  = $padding\n";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set                                  encoded     <- | ->     decrypts";
+				Log3 $name, 4, "$ioname: SD_Keeloq_set - should (HCS301),   sync cnt |discriminat.| bt |           serial           | bt |V|R|padding";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - is device,          encoded (Rolling code)    |           serial           | bt |V|R|padding";
+
+				my $bits_split;
+				for my $i(0..($length_bitMSG - 1)){
+					$bits_split.= substr($bits,$i,1);
+					$bits_split.= " " if ($i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65);
+				}
+
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
+
+			## user define manually RollingCodes to send
+			} else {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - !! user set rolling codes, no function guaranteed !!";
+
+				my $RollingCodes = AttrVal($name,"RollingCodes",undef);
+				my $av = eval $RollingCodes;
+				if( $@ ) {
+					return "ERROR: ".$@;
+				} else {
+					$RollingCodes = $av if( ref($av) eq "HASH" );
+				}
+
+				$hash->{helper}{RollingCodes} = $RollingCodes;
+				
+				foreach my $d (keys %{$hash->{helper}{RollingCodes}}) {
+					if ($d eq $button) {
+						Log3 $name, 4, "$ioname: SD_Keeloq_Set - RollingCode for $d found -> ".$hash->{helper}{RollingCodes}{$button};
+						$msg = $hash->{helper}{RollingCodes}{$button};
+					}
+				}
 			}
 
-			Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
+			if($msg eq "") {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg found no RollingCode for button $button, rebuild msg from receive";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Preamble           : ".$models{$model}{Protocol}."#0x";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part one           : ".sprintf("%08X", oct( "0b$encoded" ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part one (bits)    : ".$encoded;
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part two           : ".sprintf("%08X",oct( "0b".substr($bits,32,32) ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part two (bits)    : ".substr($bits,32,32);
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part three         : ".sprintf("%01X", oct( "0b".substr($bits,64,4) ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part three (bits)  : ".substr($bits,64,4);
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Repeats            : "."#R$Repeats";
 
-			my $msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b$bits_32to64" ) ).sprintf("%01X", oct( "0b$bits_65to68" ) )."#R1";
+				my $compare = "unequal";
+				if (InternalVal($name, "lastMSG", undef) eq sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b".substr($bits,32,32) ) ).sprintf("%01X", oct( "0b".substr($bits,64,4) ) )) {
+					$compare = "equal";
+				}
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, compare to lastMSG : ".$compare;
+				$msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b".substr($bits,32,32) ) ).sprintf("%01X", oct( "0b".substr($bits,64,4) ) )."#R$Repeats";
+			}
+
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg (hex) = $msg";
 
 			$bits = "P88#".substr($bits, 0 , -3)."P#R".$Repeats;
