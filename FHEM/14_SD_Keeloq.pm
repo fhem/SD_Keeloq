@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-18 20:35:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 02:00:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -142,6 +142,7 @@ BEGIN {
 		AssignIoPort
 		AttrVal
 		CommandAttr
+		CommandDeleteAttr
 		FW_ME
 		FW_makeImage
 		FW_subdir
@@ -150,9 +151,12 @@ BEGIN {
 		InternalVal
 		Log3
 		ReadingsVal
+		addToDevAttrList
 		attr
 		defs
+		delFromDevAttrList
 		init_done
+		perlSyntaxCheck
 		modules
 		readingsBeginUpdate
 		readingsBulkUpdate
@@ -261,8 +265,27 @@ sub Attr(@) {
 
 			### enjoy_motors_HS ###
 			if ($attrValue eq "enjoy_motors_HS") {
-				readingsDelete($hash,"user_info") if (ReadingsVal($name, "user_info", undef));
-				readingsDelete($hash,"user_modus") if (ReadingsVal($name, "user_modus", undef));
+				readingsSingleUpdate($hash, "user_info", "messages can be received and send with some RollingCodes!", 1);
+				addToDevAttrList($name,"RollingCodes:textField-long");
+			}
+
+			if ($model eq "enjoy_motors_HS") {
+				if ($attrName eq "RollingCodes") {
+					return "ERROR: The command must informat { \" \" => \" \" }" if ($attrValue !~ /\s?+{\X+=>\X+}/);
+					my $err = perlSyntaxCheck($attrValue, ());   # check PERL Code
+					return $err if($err);
+					
+					## attrValue check and sort in ##
+					if( $attrValue =~ m/^\{.*\}$/s && $attrValue =~ m/=>/ && $attrValue !~ m/\$/ ) {
+						my $av = eval $attrValue;
+						if( $@ ) {
+							return "ERROR: ".$@;
+						} else {
+							$attrValue = $av if( ref($av) eq "HASH" );
+						}
+					}
+					$hash->{helper}{RollingCodes} = $attrValue;
+				}
 			}
 
 			### Roto | Waeco_MA650_TX | unknown ###
@@ -328,6 +351,13 @@ sub Attr(@) {
 			if ($attrName eq "addGroups" && $attr{$name}{Channels} == 0) {
 				CommandAttr($hash,"$name Channels 1");
 			}
+			
+			if ($model eq "enjoy_motors_HS") {
+				if ($attrName eq "model") {
+					delFromDevAttrList($name, "RollingCodes:textField-long") if (AttrVal($name, "userattr", undef) =~ /RollingCodes/);
+					CommandDeleteAttr($hash, "$name RollingCodes") if (AttrVal($name, "RollingCodes", undef));
+				}
+			}		
 		}
 
 		Log3 $name, 3, "SD_Keeloq: $cmd attr $attrName to $attrValue" if (defined $attrValue);
@@ -667,7 +697,7 @@ sub Set($$$@) {
 			# 00110001111010111000101110001010000000001000101101001000000001011000
 			# P88#31EB8B8A008B48058
 
-			## send from user
+			## send from user with some RollingCodes
 			# Button up
 			# set nano_433Mhz raw SR;;R=4;;P0=-15618;;P1=401;;P2=-410;;P3=-4014;;P4=-810;;P5=801;;D=0121212121212121212121213141414525214525214141452141414145214525214521414145214521452525252525252525252521452525214521414521452521452525252525252521452141;;
 			# Button down
@@ -698,6 +728,8 @@ sub Set($$$@) {
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial                    = $serial";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits               = $serialbits";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits reverse       = $serialbits_rev";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Channel                   = ".(( oct("0b".substr($serialbits_rev,0,4)) >> 2 * 1) + 1 );
+
 			$bits.= $serialbits_rev;
 			$bits_32to64.= $serialbits_rev;
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button                    = $button";
@@ -727,13 +759,12 @@ sub Set($$$@) {
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
 
 			my $msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b$bits_32to64" ) ).sprintf("%01X", oct( "0b$bits_65to68" ) )."#R1";
-			Log3 $name, 3, "$ioname: SD_Keeloq_Set - sendMsg (hex) = $msg";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg (hex) = $msg";
 
 			$bits = "P88#".substr($bits, 0 , -3)."P#R".$Repeats;
-			Log3 $name, 3, "$ioname: SD_Keeloq_Set - sendMsg (bits) = $bits";
+			Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg (bits) = $bits";
 
 			IOWrite($hash, 'sendMsg', $msg);
-			#IOWrite($hash, 'sendMsg', $bits);
 
 			readingsBeginUpdate($hash);
 			readingsBulkUpdate($hash, "button", $button, 1);
@@ -815,6 +846,7 @@ sub Parse($$) {
 	# 2 bit Padding
 	####################### 34bit
 
+	my $serialHex;
 	my $serialWithoutCh;
 	my $model = "unknown";
 	my $devicedef;
@@ -891,7 +923,7 @@ sub Parse($$) {
 		if (defined $hash->{LASTInputDev}) {
 			my $LASTInputDev = $hash->{LASTInputDev};
 			my $RAWMSG_Internal = $LASTInputDev."_RAWMSG";
-			Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal};
+			Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal} if ($hash->{$RAWMSG_Internal});
 		}
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $bitData\n";
 	}
@@ -938,21 +970,26 @@ sub Parse($$) {
 
 		my $binsplit = SD_Keeloq_binsplit_Roto($bitData);
 
-		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - model = $model";
-		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - DMSG  = P".$protocol."#".InternalVal($name, "lastMSG", undef);
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - model       = $model";
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - DMSG        = P".$protocol."#".InternalVal($name, "lastMSG", undef);
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RollingCode = ".substr($rawData,0,8);
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - Serial      = ".substr($rawData,8,7);
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                                encoded     <- | ->     decrypts";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
 
 		$buttonbits = $button;
-		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};					# search buttontext --> buttons
+		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};				# search buttontext --> buttons
 		$bit0to15 = reverse (substr ($bitData , 0 , 16));
 		$bit16to27 = reverse (substr ($bitData , 16 , 12));
 		$bit28to31 = reverse (substr ($bitData , 28 , 4));
 	}
 
-	$channel = hex(substr($serial,-1)) + 1 if ($model eq "enjoy_motors_HS");
+	if ($model eq "enjoy_motors_HS") {
+		$channel = (sprintf ("%x" , hex(substr($rawData,8,1)) >> 2) + 1);    # verified
+		$serialHex = substr($rawData,8,7);                                   # for check in attr user RollingCode
+	};
 
 	$serial = oct( "0b$serial" ); ## need to DECODE & view Debug 
 
@@ -1111,6 +1148,7 @@ sub Parse($$) {
 	readingsBulkUpdate($hash, "repeat_message", $RPT) if (defined $RPT);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "batteryState", $VLOW) if (defined $VLOW);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "serial_receive", $serialWithoutCh, 0);
+	readingsBulkUpdate($hash, "serial_from_lastMSG", $serialHex, 0) if ($serialHex);        # enjoy_motors_HS
 	readingsBulkUpdate($hash, "state", $state);
 	readingsBulkUpdate($hash, "user_modus", $modus) if ($model ne "enjoy_motors_HS");
 	readingsBulkUpdate($hash, "user_info", $info) if ($model ne "enjoy_motors_HS");
@@ -1134,6 +1172,7 @@ sub Undef($$) {
 	my ($hash, $name) = @_;
 	delete($modules{SD_Keeloq}{defptr}{$hash->{DEF}}) if(defined($hash->{DEF}) && defined($modules{SD_Keeloq}{defptr}{$hash->{DEF}}));
 	delete($modules{SD_Keeloq}{defptr}{ioname}) if (exists $modules{SD_Keeloq}{defptr}{ioname});
+	delete $hash->{helper}{RollingCodes} if(defined($hash->{helper}{RollingCodes}));
 	return undef;
 }
 
