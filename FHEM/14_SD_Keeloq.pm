@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 23:43:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -1542,18 +1542,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul><b>command:</b><br>
 		<ul>
 			<li><b>learn</b><br>
-			Teaching an engine. Please put the motor in learn mode according to the manufacturer's instructions.<br>
+			Teaching an engine. Please put the motor in learn mode according to the manufacturer's instructions.</li><br>
 			<li><b>down</b><br>
-			engine down<br>
+			engine down</li><br>
 			<li><b>up</b><br>
-			engine up<br>
+			engine up</li><br>
 			<li><b>stop</b><br>
-			engine stop<br>
+			engine stop</li><br>
 			<li><b>updown</b><br>
-			Simultaneously pressing the up and down keys for programming purposes.<br>
+			Simultaneously pressing the up and down keys for programming purposes.</li><br>
 			<li><b>shade</b><br>
 			Bring shutters into shading position.<br>
-			<i>(not supported by all receivers! The device sends 15x stop command)</i><br>
+			<i>(not supported by all receivers! The device sends 15x stop command)</i></li><br>
 			<br>
 		</ul>
 	example: <ul>set SD_Keeloq_Device1 down 7<br>
@@ -1620,7 +1620,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li></ul>
 
 		<br>
-		<u><b>ONLY for the model enjoy_motors_HS!</b></u>
+		<u><b>ONLY for the model enjoy_motors_HS!</b></li></u>
 		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
 		Here the user can store rolling codes which are accepted by the hardware to be controlled.<br>
 		<i><u>example:</u></i><br>
@@ -1719,18 +1719,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul><b>command:</b><br>
 		<ul>
 			<li><b>learn</b><br>
-			Anlernen eines Motors. Bitte den Motor dazu nach Herstellerangaben in den Anlernmodus versetzen.<br>
+			Anlernen eines Motors. Bitte den Motor dazu nach Herstellerangaben in den Anlernmodus versetzen.</li><br>
 			<li><b>down</b><br>
-			Motor nach unten<br>
+			Motor nach unten</li><br>
 			<li><b>up</b><br>
-			Motor nach oben<br>
+			Motor nach oben</li><br>
 			<li><b>stop</b><br>
-			Motor stop<br>
+			Motor stop</li><br>
 			<li><b>updown</b><br>
-			Gleichzeitges Dr&uuml;cken der Auf- und Abtaste zu Programmierzwecken.<br>
+			Gleichzeitges Dr&uuml;cken der Auf- und Abtaste zu Programmierzwecken.</li><br>
 			<li><b>shade</b><br>
 			Rolladen in Beschattungsposition bringen.<br>
-			<i>(wird nicht von allen Empf&auml;ngern unterst&uuml;tzt! Das Device sendet 15x den Stop Befehl)</i><br>
+			<i>(wird nicht von allen Empf&auml;ngern unterst&uuml;tzt! Das Device sendet 15x den Stop Befehl)</i></li><br>
 			<br>
 		</ul>
 	Beispiele: <ul>set SD_Keeloq_Device1 down 7<br>
@@ -1797,7 +1797,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li></ul>
 
 		<br>
-		<u><b>NUR f&uuml;r das Modell enjoy_motors_HS!</b></u>
+		<u><b>NUR f&uuml;r das Modell enjoy_motors_HS!</b></li></u>
 		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
 		Hier kann der User RollingCodes hinterlegen welche zum senden akzeptiert werden von der zu steuerndenen Hardware.<br>
 		<i><u>Beispiel:</u></i><br>
