@@ -1,5 +1,28 @@
-2020-01-11 - Update README.md
-2020-01-11 - Automaitc updated controls and CHANGED
+2020-01-19 - Update 14_SD_Keeloq.pm
+- added option user rollingcode send
+
+2020-01-18 - Update 14_SD_Keeloq.pm
+- fix autocreate
+- revised code
+- delete readings user_info & user_modus for model enjoy_motors_HS
+
+2020-01-18 - Update 14_SD_Keeloq.pm
+- revised function
+
+2020-01-18 - Update 14_SD_Keeloq.pm
+- change direct write to function
+
+2020-01-18 - Update 14_SD_Keeloq.pm
+- revised send option enjoy_motors_HS
+
+2020-01-15 - Update 14_SD_Keeloq.pm
+- added enjoy_motors_HS option to send if user receive bitMSG
+- added some doc
+
+2020-01-12 - Update 14_SD_Keeloq.pm
+- added model enjoy_motors_HS
+
 2020-01-11 - added FHEM update option
+
 2020-01-11
 14_SD_Keeloq.pm: transfer to fhem Github 

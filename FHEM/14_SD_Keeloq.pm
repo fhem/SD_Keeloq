@@ -1,7 +1,10 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 32 2019-09-02 09:56:00Z v3.4 $
+# $Id: 14_SD_Keeloq.pm 21010 2020-01-19 23:43:00Z v3.4 $
 #
 # The file is part of the SIGNALduino project.
+# https://github.com/RFD-FHEM/RFFHEM
+# https://github.com/fhem/SD_Keeloq
+#
 # The purpose of this module is support for KeeLoq devices.
 # It is an attempt to implement the project "Bastelbudenbuben" in Perl without personal testing.
 # For the sake of fairness to the manufacturer, I advise every user to perform extensions at their own risk.
@@ -20,6 +23,13 @@ use POSIX;
 use Data::Dumper qw (Dumper);
 
 my %models = (
+	"enjoy_motors_HS" => {	Button => {	"stop"  =>  "1000",
+																			"up"    =>  "1010",
+																			"down"	=>  "1100"
+																		},
+													Protocol 	=> "P88",
+													Typ				=> "remote"
+												},
 	"JaroLift" =>	{	Button => { "up"					=>	"1000",	# button
 															"stop"				=>	"0100",	# button - for learn (LearnVersion new, step 2)
 															"down"				=>	"0010",	# button
@@ -102,12 +112,20 @@ sub SD_Keeloq_Initialize() {
   $hash->{AttrFn}				= "SD_Keeloq::Attr";
   $hash->{SetFn}				= "SD_Keeloq::Set";
   $hash->{ParseFn}			= "SD_Keeloq::Parse";
-  $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF model:".join(",", sort keys %models)." stateFormat Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
-													"UI:aus,Einzeilig,Mehrzeilig ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
+  $hash->{AttrList}			= "IODev MasterMSB MasterLSB KeeLoq_NLF ".
+													"ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 ".
+													"Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ".
+													"ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 ".
+													"UI:aus,Einzeilig,Mehrzeilig ".
+													"model:".join(",", sort keys %models)." stateFormat ".
 													"addGroups Serial_send LearnVersion:old,new ".$readingFnAttributes;
 	$hash->{FW_detailFn}	= "SD_Keeloq::summaryFn";
 	$hash->{FW_addDetailToSummary}	= 1;
 	$hash->{FW_deviceOverview}			= 1;
+	$hash->{AutoCreate} =
+	{
+		"SD_Keeloq_.*" => { ATTR => "event-min-interval:.*:300 event-on-change-reading:.*", FILTER => "%NAME", autocreateThreshold => "3:180", GPLOT => ""},
+	};
 }
 
 ###################################
@@ -123,6 +141,8 @@ BEGIN {
 	GP_Import(qw(
 		AssignIoPort
 		AttrVal
+		CommandAttr
+		CommandDeleteAttr
 		FW_ME
 		FW_makeImage
 		FW_subdir
@@ -131,10 +151,14 @@ BEGIN {
 		InternalVal
 		Log3
 		ReadingsVal
+		addStructChange
+		addToDevAttrList
 		attr
 		defs
+		delFromDevAttrList
 		init_done
 		modules
+		perlSyntaxCheck
 		readingsBeginUpdate
 		readingsBulkUpdate
 		readingsDelete
@@ -149,13 +173,11 @@ sub Define() {
   my ($hash, $def) = @_;
   my @a = split("[ \t][ \t]*", $def);
 
-	#return "a0=$a[0] a1=$a[1] a2=$a[2] a3=$a[3]"; # for TEST
-
   # Argument            				   0	     1       2        3
 	return "wrong syntax: define <name> SD_Keeloq <Serial> <optional IODEV>" if(int(@a) < 3 || int(@a) > 4);
 	return "ERROR: your <Serial> $a[2] is wrong! Please use only hexadecimal input." if (not $a[2] =~ /^[0-9a-fA-F]{6,7}/s);
 
-	# Users report serial numbers with 00 at the end | https://github.com/HomeAutoUser/Jaro/issues/6 | https://forum.fhem.de/index.php/topic,13596.msg962983.html#msg962983
+	# Users report serial numbers with 00 at the end | https://github.com/fhem/SD_Keeloq/issues/6 | https://forum.fhem.de/index.php/topic,13596.msg962983.html#msg962983
 	# return "ERROR: your <Serial> $a[2] is wrong! Please use only hexadecimal input with END 00." if (length $a[2] == 6 && not $a[2] =~ /^[0-9a-fA-F]{4}00/s);
 
 	$hash->{STATE} = "Defined";
@@ -173,8 +195,8 @@ sub Define() {
 	my $ioname = $modules{SD_Keeloq}{defptr}{ioname} if (exists $modules{SD_Keeloq}{defptr}{ioname} && not $iodevice);
 	$iodevice = $ioname if not $iodevice;
 
-	$attr{$name}{room}		= "SD_Keeloq" if ( not exists($attr{$name}{room}) );
-	$attr{$name}{model}		= $model if ( not exists($attr{$name}{model}) );
+	CommandAttr($hash,"$name room SD_Keeloq") if ( not exists($attr{$name}{room}) );
+	CommandAttr($hash,"$name model $model") if ( not exists($attr{$name}{model}) );
 
 	AssignIoPort($hash, $iodevice);
 	return undef;
@@ -208,13 +230,13 @@ sub Attr(@) {
 				if ($attrName eq "addGroups") {
 					return "ERROR: wrong $attrName syntax!\nexample: South:1,3,5 North:2,4" if not ($attrValue =~ /^[a-zA-Z0-9_\-äÄüÜöÖ:,\s]+[^,.:\D]$/s);
 					SD_Keeloq_translate($attrValue);
-					$attr{$name}{addGroups} = $attrValue;
+					CommandAttr($hash,"$name addGroups $attrValue");
 				}
 
 				if ($attrName eq "ChannelNames") {
 					return "ERROR: wrong $attrName syntax! [only a-z | umlauts | numbers | , | _ | - | ]\nexample: South,North" if not ($attrValue =~ /\A[a-zA-Z\d,_-äÄüÜöÖ\s]+\Z/s);
 					SD_Keeloq_translate($attrValue);
-					$attr{$name}{ChannelNames} = $attrValue;
+					CommandAttr($hash,"$name ChannelNames $attrValue");
 				}
 
 				if ($attrName eq "Channels") {
@@ -242,7 +264,37 @@ sub Attr(@) {
 				}
 			}
 
-			### Roto | Waeco_MA650_TX###
+			### enjoy_motors_HS ###
+			if ($attrValue eq "enjoy_motors_HS") {
+				readingsSingleUpdate($hash, "user_info", "messages can be received and send with some RollingCodes!", 1);
+				addToDevAttrList($name,"RollingCodes:textField-long");
+			}
+
+			if ($model eq "enjoy_motors_HS") {
+				if ($attrName eq "RollingCodes") {
+					return "ERROR: The command must informat { \"down\" => \"P88#0x0123456789ABCDEF0#R1\", }" if ($attrValue !~ /\s?+{\X+=>\X+}/);
+					my $err = perlSyntaxCheck($attrValue, ());   # check PERL Code
+					return $err if($err);
+					
+					## attrValue check and sort in ##
+					if( $attrValue =~ m/^\{.*\}$/s && $attrValue =~ m/=>/ && $attrValue !~ m/\$/ ) {
+						my $av = eval $attrValue;
+						if( $@ ) {
+							return "ERROR: ".$@;
+						} else {
+							$attrValue = $av if( ref($av) eq "HASH" );
+						}
+					}
+
+					## check, only allowed buttons ##
+					foreach my $d (keys %{$attrValue}) {
+						return "ERROR: your button \"$d\" is not allowed!" if (not grep { /$d/ } keys %{$models{$model}{Button}});
+						return "ERROR: DMSG \"".%{$attrValue}{$d}."\" from button $d contains invalid characters!" if (%{$attrValue}{$d} !~ /^P88#0x[A-Fa-f0-9]+(#R\d)$/);
+					}
+				}
+			}
+
+			### Roto | Waeco_MA650_TX | unknown ###
 			if ($model eq "Roto" || $model eq "Waeco_MA650_TX" || $model eq "unknown") {
 				if ($attrName eq "addGroups" || $attrName eq "Channels" || $attrName eq "ChannelNames" || $attrName eq "ChannelFixed" || $attrName eq "LearnVersion" || $attrName eq "ShowIcons" || $attrName eq "ShowLearn" || $attrName eq "ShowShade") {
 					return "ERROR: the attribute $attrName are not support on typ $model";
@@ -303,8 +355,21 @@ sub Attr(@) {
 			}
 
 			if ($attrName eq "addGroups" && $attr{$name}{Channels} == 0) {
-				$attr{$name}{Channels} = 1;
+				CommandAttr($hash,"$name Channels 1");
 			}
+			
+			if ($model eq "enjoy_motors_HS") {
+				if ($attrName eq "model") {
+					if (AttrVal($name, "RollingCodes", undef)) {
+						CommandDeleteAttr($hash, "$name RollingCodes");
+					}
+
+					if (AttrVal($name, "userattr", undef) =~ /RollingCodes/) {
+						delFromDevAttrList($name, "RollingCodes:textField-long");
+						addStructChange("modify", $name, "$name userattr");          # note with question mark
+					}
+				}
+			}		
 		}
 
 		Log3 $name, 3, "SD_Keeloq: $cmd attr $attrName to $attrValue" if (defined $attrValue);
@@ -384,6 +449,14 @@ sub Set($$$@) {
 				$ret.=" $_:noArg";
 			}
 		}
+	### Typ enjoy_motors_HS - without MasterMSB && MasterLSB && KeeLoq_NLF ###
+	## User reports with rolling code it goes to send
+	} elsif ($model eq "enjoy_motors_HS") {
+		if (InternalVal($name, "bitMSG", undef) || AttrVal($name,"RollingCodes",undef)) {
+			foreach (keys %{$models{$model}{Button}}) {
+				$ret.=" $_:noArg";
+			}
+		}
 	}
 
 	return $ret if ( $a[0] eq "?");
@@ -410,19 +483,22 @@ sub Set($$$@) {
 				}
 			}
 		}
-	### Typ PR3_4207_002 || RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
-	} elsif ($model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
+	### Typ enjoy_motors_HS || PR3_4207_002 || RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
+	} elsif ($model eq "enjoy_motors_HS" || $model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
 		return "ERROR: no set value specified!" if(int(@a) != 1);
 	}
 
-	return "ERROR: no value, set Attributes MasterMSB please!" if ($MasterMSB eq "");
-	return "ERROR: no value, set Attributes MasterLSB please!" if ($MasterLSB eq "");
-	return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
-	return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");
+	### all without enjoy_motors_HS ###
+	if ($model ne "enjoy_motors_HS") {
+		return "ERROR: no value, set Attributes MasterMSB please!" if ($MasterMSB eq "");
+		return "ERROR: no value, set Attributes MasterLSB please!" if ($MasterLSB eq "");
+		return "ERROR: no value, set Attributes KeeLoq_NLF please!" if ($KeeLoq_NLF eq "");
+		return "ERROR: no value, set Attributes Serial_send please!" if($Serial_send eq "");	
+	}
 
 	if ($cmd ne "?") {
+		### Typ JaroLift ###
 		if ($model eq "JaroLift") {
-			return "ERROR: your device is under development!" if ($model eq "Roto");
 			return "ERROR: you have no I/O DEV defined! Please define one device to send or dummy." if (AttrVal($name, "IODev", "") eq "");
 			Log3 $name, 4, "######## DEBUG SET - START ########";
 			Log3 $name, 4, "$ioname: SD_Keeloq_Set - cmd=$cmd cmd2=$cmd2 args cmd2=".scalar @channel_split." addGroups=$addGroups" if ($cmd ne "?" && defined $cmd2);
@@ -577,7 +653,7 @@ sub Set($$$@) {
 				my $bits = reverse (sprintf("%032b", $encoded)).reverse($models{$model}{Channel}{$channel}).reverse($Serial_send).reverse($buttonbits).reverse($bit64to71);
 
 				# special, command shade -> 20 repeats = 2,34 s | 15 repeats = 1,75s
-				# userreport: 12 repeats ok https://github.com/HomeAutoUser/SD_Keeloq__old_Jaro/issues/9#issuecomment-524176737
+				# userreport: 12 repeats ok https://github.com/fhem/SD_Keeloq/issues/9#issuecomment-524176737
 				$Repeats = 15 if ($cmd eq "shade");
 				my $msg = "P87#$bits"."P#R".$Repeats;
 
@@ -624,8 +700,125 @@ sub Set($$$@) {
 				readingsBulkUpdate($hash, "channel_control", $group_value);
 				readingsEndUpdate($hash, 1);
 			}
+		### Typ enjoy_motors_HS ###
+		} elsif ($model eq "enjoy_motors_HS") {
+
+			### Serial 012D100 ###
+			## recevice
+			# Button up
+			# 00110001111010111000101110001010000000001000101101001000000001011000
+			# P88#31EB8B8A008B48058
+
+			## send from user with some RollingCodes
+			# Button up
+			# set nano_433Mhz raw SR;;R=4;;P0=-15618;;P1=401;;P2=-410;;P3=-4014;;P4=-810;;P5=801;;D=0121212121212121212121213141414525214525214141452141414145214525214521414145214521452525252525252525252521452525214521414521452521452525252525252521452141;;
+			# Button down
+			# set nano_433Mhz raw SR;;R=4;;P0=-15562;;P1=400;;P2=-413;;P3=-4010;;P4=799;;P5=-811;;D=0121212121212121212121213421542151515151542154242154242421515421542421542151515151515154242424242424242421542424215421515421542421542424242424242424215151;;
+			# Button stop
+			# set nano_433Mhz raw SR;;R=4;;P0=-15618;;P1=398;;P2=-411;;P3=-4016;;P4=-813;;P5=798;;D=01212121212121212121212131414521452145214141452145252521414141414525214145214145252145214525252525252525214525252145214145214525214525252525252525252521412;;
+
+			$button = $cmd;
+			$buttonbits = $models{$model}{Button}{$cmd};
+
+			my $buttonbits_rev = reverse ( $models{$model}{Button}{$cmd} );
+			my $bits = "";
+			my $encoded = substr(InternalVal($name, "bitMSG", undef),0,32);
+			my $serial = $hash->{DEF};
+			my $serialbits = sprintf "%028b", hex( $serial );
+			my $serialbits_rev = reverse ( sprintf "%028b", hex( $serial ) );
+			my $V = substr(InternalVal($name, "bitMSG", undef),64,1);
+			my $R = substr(InternalVal($name, "bitMSG", undef),65,1);
+			my $padding = substr(InternalVal($name, "bitMSG", undef),66,2);
+			my $length_bitMSG = length(InternalVal($name, "bitMSG", undef));
+			my $msg = "";
+
+			Log3 $name, 4, "######## DEBUG SET - START ########";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - cmd=$cmd";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - encoded, from bitMSG      = $encoded";
+			$bits.= $encoded;
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial                    = $serial";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits               = $serialbits";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Serial bits reverse       = $serialbits_rev";
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Channel                   = ".(( oct("0b".substr($serialbits_rev,0,4)) >> 2 * 1) + 1 );
+
+			$bits.= $serialbits_rev.$buttonbits_rev.$V.$R.$padding;
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button                    = $button";
+
+			## if no RollingCodes from user
+			if (!AttrVal($name,"RollingCodes",undef)) {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits               = $buttonbits";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Button_bits reverse       = $buttonbits_rev";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Voltage LOW indicator (V) = $V";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Repeat indicator (R)      = $R";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - Padding bits (SD intern)  = $padding\n";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set                                  encoded     <- | ->     decrypts";
+				Log3 $name, 4, "$ioname: SD_Keeloq_set - should (HCS301),   sync cnt |discriminat.| bt |           serial           | bt |V|R|padding";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - is device,          encoded (Rolling code)    |           serial           | bt |V|R|padding";
+
+				my $bits_split;
+				for my $i(0..($length_bitMSG - 1)){
+					$bits_split.= substr($bits,$i,1);
+					$bits_split.= " " if ($i == 31 || $i == 59 || $i == 63 || $i == 64 || $i == 65);
+				}
+
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - bits (send) = $bits_split\n";
+
+			## user define manually RollingCodes to send
+			} else {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - !! user set rolling codes, no function guaranteed !!";
+
+				my $RollingCodes = AttrVal($name,"RollingCodes",undef);
+				my $av = eval $RollingCodes;
+				if( $@ ) {
+					return "ERROR: ".$@;
+				} else {
+					$RollingCodes = $av if( ref($av) eq "HASH" );
+				}
+
+				$hash->{helper}{RollingCodes} = $RollingCodes;
+				
+				foreach my $d (keys %{$hash->{helper}{RollingCodes}}) {
+					if ($d eq $button) {
+						Log3 $name, 4, "$ioname: SD_Keeloq_Set - RollingCode for $d found -> ".$hash->{helper}{RollingCodes}{$button};
+						$msg = $hash->{helper}{RollingCodes}{$button};
+					}
+				}
+			}
+
+			if($msg eq "") {
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg found no RollingCode for button $button, rebuild msg from receive";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Preamble           : ".$models{$model}{Protocol}."#0x";
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part one           : ".sprintf("%08X", oct( "0b$encoded" ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part one (bits)    : ".$encoded;
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part two           : ".sprintf("%08X",oct( "0b".substr($bits,32,32) ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part two (bits)    : ".substr($bits,32,32);
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Part three         : ".sprintf("%01X", oct( "0b".substr($bits,64,4) ) );
+				Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg Build, Part three (bits)  : ".substr($bits,64,4);
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, Repeats            : "."#R$Repeats";
+
+				my $compare = "unequal";
+				if (InternalVal($name, "lastMSG", undef) eq sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b".substr($bits,32,32) ) ).sprintf("%01X", oct( "0b".substr($bits,64,4) ) )) {
+					$compare = "equal";
+				}
+				Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg Build, compare to lastMSG : ".$compare;
+				$msg = $models{$model}{Protocol}."#0x".sprintf("%08X", oct( "0b$encoded" ) ).sprintf("%08X",oct( "0b".substr($bits,32,32) ) ).sprintf("%01X", oct( "0b".substr($bits,64,4) ) )."#R$Repeats";
+			}
+
+			Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMsg (hex) = $msg";
+
+			$bits = "P88#".substr($bits, 0 , -3)."P#R".$Repeats;
+			Log3 $name, 5, "$ioname: SD_Keeloq_Set - sendMsg (bits) = $bits";
+
+			IOWrite($hash, 'sendMsg', $msg);
+
+			readingsBeginUpdate($hash);
+			readingsBulkUpdate($hash, "button", $button, 1);
+			readingsBulkUpdate($hash, "state", "send $button", 1);
+			readingsEndUpdate($hash, 1);
+			
+		### all other models ###
 		} else {
-			return "ERROR: the function are in development!"
+			return "ERROR: the function from model $model are in development!"
 		}
 	}
 }
@@ -683,7 +876,7 @@ sub Parse($$) {
 
 	################################################################################################
 
-	## PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ##
+	## enjoy_motors_HS | PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ##
 	## D13E68A890EAFEF20 ##
 	## 11010001001111100110100010101000100100001110101011111110111100100000 ##
 	#
@@ -752,7 +945,7 @@ sub Parse($$) {
 	my $channel;
 	my $channel_bin;
 
-	### PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX only ###
+	### enjoy_motors_HS | PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX only ###
 	my $bit0to15;
 	my $bit16to27;
 	my $bit28to31;
@@ -774,7 +967,7 @@ sub Parse($$) {
 		if (defined $hash->{LASTInputDev}) {
 			my $LASTInputDev = $hash->{LASTInputDev};
 			my $RAWMSG_Internal = $LASTInputDev."_RAWMSG";
-			Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal};
+			Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RAWMSG = ".$hash->{$RAWMSG_Internal} if ($hash->{$RAWMSG_Internal});
 		}
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $bitData\n";
 	}
@@ -814,25 +1007,32 @@ sub Parse($$) {
 		foreach my $keys (keys %{$models{$model}{Channel}}) {																							# search channel bits --> channels
 			$channel_bin = $models{$model}{Channel}{$keys} if ($keys eq $channel);
 		}
-	### PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
-	} elsif ($model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
+	### enjoy_motors_HS || PR3_4207_002 | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX ###
+	} elsif ($model eq "enjoy_motors_HS" || $model eq "PR3_4207_002" || $model eq "RP_S1_HS_RF11" || $model eq "Roto" || $model eq "Waeco_MA650_TX") {
 		$VLOW = substr ($bitData , 64 , 1);
 		$RPT = substr ($bitData , 65 , 1);
 
 		my $binsplit = SD_Keeloq_binsplit_Roto($bitData);
 
-		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - typ = $model";
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - model       = $model";
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - DMSG        = P".$protocol."#".InternalVal($name, "lastMSG", undef);
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - RollingCode = ".substr($rawData,0,8);
+		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - Serial      = ".substr($rawData,8,7);
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                                encoded     <- | ->     decrypts";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse                sync counter |discriminat.| bt |           serial           | bt |V|R|padding";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
 		Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = |->     must be calculated!    <-| ". $serial ." ".$button ." ". $VLOW ." ". $RPT."\n";
 
 		$buttonbits = $button;
-		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};					# search buttontext --> buttons
+		($button) = grep { $models{$model}{Button}{$_} eq $button } keys %{$models{$model}{Button}};				# search buttontext --> buttons
 		$bit0to15 = reverse (substr ($bitData , 0 , 16));
 		$bit16to27 = reverse (substr ($bitData , 16 , 12));
 		$bit28to31 = reverse (substr ($bitData , 28 , 4));
 	}
+
+	if ($model eq "enjoy_motors_HS") {
+		$channel = (sprintf ("%x" , hex(substr($rawData,8,1)) >> 2) + 1);    # verified
+	};
 
 	$serial = oct( "0b$serial" ); ## need to DECODE & view Debug 
 
@@ -974,12 +1174,12 @@ sub Parse($$) {
 	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - decrypts channel_control             = $group_value" if (defined $group_value);	# JaroLift
 	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - decrypts Voltage LOW indicator       = $VLOW" if (defined $VLOW);								# RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - decrypts Repeat indicator            = $RPT" if (defined $RPT);									# RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
-	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - user_modus                           = $modus";
-	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - user_info                            = $info";
+	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - user_modus                           = $modus" if ($model ne "enjoy_motors_HS");
+	Log3 $name, 5, "$ioname: SD_Keeloq_Parse - user_info                            = $info" if ($model ne "enjoy_motors_HS");
 	Log3 $name, 5, "######## DEBUG END ########\n";
 
-	$VLOW = $VLOW eq "0" ? "ok" : "low" if (defined $VLOW);		# only chip HCS301 - RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
-	$RPT = $RPT eq "0" ? "no" : "yes" if (defined $RPT);			# only chip HCS301 - RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
+	$VLOW = $VLOW eq "0" ? "ok" : "low" if (defined $VLOW);		# only chip HCS301 - enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
+	$RPT = $RPT eq "0" ? "no" : "yes" if (defined $RPT);			# only chip HCS301 - enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 
 	readingsBeginUpdate($hash);
 	readingsBulkUpdate($hash, "button", $button);
@@ -988,12 +1188,12 @@ sub Parse($$) {
 	readingsBulkUpdate($hash, "channel_control", $group_value) if (defined $group_value);		# JaroLift
 	readingsBulkUpdate($hash, "counter_receive", $counter_decr) if (defined $counter_decr);
 	readingsBulkUpdate($hash, "last_digits", $bit8to15) if (defined $bit8to15);							# JaroLift
-	readingsBulkUpdate($hash, "repeat_message", $RPT) if (defined $RPT);										# RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
-	readingsBulkUpdate($hash, "batteryState", $VLOW) if (defined $VLOW);										# RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
+	readingsBulkUpdate($hash, "repeat_message", $RPT) if (defined $RPT);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
+	readingsBulkUpdate($hash, "batteryState", $VLOW) if (defined $VLOW);										# enjoy_motors_HS | RP_S1_HS_RF11 | Roto | Waeco_MA650_TX
 	readingsBulkUpdate($hash, "serial_receive", $serialWithoutCh, 0);
 	readingsBulkUpdate($hash, "state", $state);
-	readingsBulkUpdate($hash, "user_modus", $modus);
-	readingsBulkUpdate($hash, "user_info", $info);
+	readingsBulkUpdate($hash, "user_modus", $modus) if ($model ne "enjoy_motors_HS");
+	readingsBulkUpdate($hash, "user_info", $info) if ($model ne "enjoy_motors_HS");
 
 	if ($model eq "JaroLift") {
 		readingsBulkUpdate($hash, "LastAction_Channel_".sprintf ("%02s",$channel), $button) if ($group_value eq "no");
@@ -1014,6 +1214,7 @@ sub Undef($$) {
 	my ($hash, $name) = @_;
 	delete($modules{SD_Keeloq}{defptr}{$hash->{DEF}}) if(defined($hash->{DEF}) && defined($modules{SD_Keeloq}{defptr}{$hash->{DEF}}));
 	delete($modules{SD_Keeloq}{defptr}{ioname}) if (exists $modules{SD_Keeloq}{defptr}{ioname});
+	delete $hash->{helper}{RollingCodes} if(defined($hash->{helper}{RollingCodes}));
 	return undef;
 }
 
@@ -1317,6 +1518,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	- KeeLoq is a registered trademark of Microchip Technology Inc.-<br><br>
 
 	<u>The following devices are supported:</u><br>
+	<ul> - enjoy_motors_HS remote &nbsp;&nbsp;&nbsp;<small>(model: enjoy_motors_HS | protocol 88)</small><br></ul>
 	<ul> - JaroLift radio wall transmitter (example: TDRC 16W / TDRCT 04W)&nbsp;&nbsp;&nbsp;<small>(model: JaroLift | protocol 87)</small><br></ul>
 	<ul> - RADEMACHER remote with two button&nbsp;&nbsp;&nbsp;<small>(model: RP_S1_HS_RF11 | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<ul> - Roto remote with three button&nbsp;&nbsp;&nbsp;<small>(model: Roto | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
@@ -1324,7 +1526,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul> - Waeco_MA650_TX remote with two button&nbsp;&nbsp;&nbsp;<small>(model: Waeco_MA650_TX | protocol 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<br>
 	<b><i>Each model has a different length of the serial number! Please enter the serial number in hexadecimal.<br>
-	For the models RP_S1_HS_RF11 / Roto & Waeco_MA650_TX the length is 7 and for the model JaroLift 6.</i></b>
+	For the models enjoy_motors_HS / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX the length is 7 and for the model JaroLift 6.</i></b>
 	<br><br><br>
 
 	<b>Define</b><br>
@@ -1418,6 +1620,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li></ul>
 
 		<br>
+		<u><b>ONLY for the model enjoy_motors_HS!</b></u>
+		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
+		Here the user can store rolling codes which are accepted by the hardware to be controlled.<br>
+		<i><u>example:</u></i><br>
+		<code>
+		{<br>
+			"up" => "P88#0x12345678008B48018#R1",<br>
+			"down" => "P88#0x87654321808B48038#R1",<br>
+		}
+		</code></li>
+
+		<br>
 		<u><b>for all models</b></u>
 		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
 		Key for decoding and encoding. The specification is hexadecimal, 8 digits + leading with 0x.<br>
@@ -1439,7 +1653,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li>
 	</ul>
 	<br><br>
-	<b>Generated shared readings | JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
+	<b>Generated shared readings | enjoy_motors_HS / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
 	<ul>
 	<li>button<br>
 	Pressed button on the remote control or in the FHEM device</li>
@@ -1481,6 +1695,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	- KeeLoq is a registered trademark of Microchip Technology Inc.-<br><br>
 
 	<u>Es werden bisher folgende Ger&auml;te unterst&uuml;tzt:</u><br>
+	<ul> - enjoy motors HS Fernbedienung&nbsp;&nbsp;&nbsp;<small>(Modulmodel: enjoy_motors_HS | Protokoll 88)</small><br></ul>
 	<ul> - JaroLift Funkwandsender (Bsp: TDRC 16W / TDRCT 04W)&nbsp;&nbsp;&nbsp;<small>(Modulmodel: JaroLift | Protokoll 87)</small><br></ul>
 	<ul> - RADEMACHER Fernbedienung mit 2 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: RP_S1_HS_RF11 | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<ul> - Roto Fernbedienung mit 3 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: Roto | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
@@ -1488,7 +1703,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 	<ul> - Waeco_MA650_TX Fernbedienung mit 2 Tasten&nbsp;&nbsp;&nbsp;<small>(Modulmodel: Waeco_MA650_TX | Protokoll 88)&nbsp;&nbsp;[HCS301 chip]</small><br></ul>
 	<br>
 	<b><i>Jedes Model besitzt eine andere L&auml;nge der Seriennummer! Bitte geben Sie die Serialnummer hexadezimal ein.<br>
-	Bei den Modellen RP_S1_HS_RF11 / Roto & Waeco_MA650_TX ist die L&auml;nge jeweils 7 und bei dem Model JaroLift 6.</i></b>
+	Bei den Modellen enjoy_motors_HS / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX ist die L&auml;nge jeweils 7 und bei dem Model JaroLift 6.</i></b>
 	<br><br><br>
 
 	<b>Define</b><br>
@@ -1582,6 +1797,18 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li></ul>
 
 		<br>
+		<u><b>NUR f&uuml;r das Modell enjoy_motors_HS!</b></u>
+		<li><a name="RollingCodes"><b>RollingCodes</b></a><br>
+		Hier kann der User RollingCodes hinterlegen welche zum senden akzeptiert werden von der zu steuerndenen Hardware.<br>
+		<i><u>Beispiel:</u></i><br>
+		<code>
+		{<br>
+			"up" => "P88#0x12345678008B48018#R1",<br>
+			"down" => "P88#0x87654321808B48038#R1",<br>
+		}
+		</code></li>
+
+		<br>
 		<u><b>f&uuml;r alle Modelle</b></u>
 		<li><a name="KeeLoq_NLF"><b>KeeLoq_NLF</b></a><br>
 		Key zur De- und Encodierung. Die Angabe erfolgt hexadezimal, 8 stellig + f&uuml;hrend mit 0x.<br>
@@ -1603,7 +1830,7 @@ sub SD_Keeloq_attr2htmlButtons($$$$$) {
 		</li>
 	</ul>
 	<br><br>
-	<b>Generierte gemeinsamgenutzte Readings | JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
+	<b>Generierte gemeinsamgenutzte Readings | enjoy_motors_HS / JaroLift / PR3_4207_002 / RP_S1_HS_RF11 / Roto & Waeco_MA650_TX</b><br><br>
 	<ul>
 	<li>button<br>
 	Gedr&uuml;ckter Knopf an der Fernbedienung oder im FHEM Device</li>
