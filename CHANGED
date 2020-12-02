@@ -1,3 +1,6 @@
+2020-12-02 - Update 14_SD_Keeloq.pm
+
+  * fixed commandref syntax
 2020-12-02 - Merge branch 'pre-release'
 2020-01-19 - Update 14_SD_Keeloq.pm
 - added option user rollingcode send
