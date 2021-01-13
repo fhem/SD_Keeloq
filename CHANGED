@@ -1,3 +1,8 @@
+2021-01-13 - Update 14_SD_Keeloq.pm
+
+  * fix https://github.com/fhem/SD_Keeloq/issues/21
+  * replace hard  tabs to spaces
+  * replace some " to ' for PerlCritic
 2020-12-02 - Automaitc updated controls and CHANGED
 2020-12-02 - Update 14_SD_Keeloq.pm
 
