@@ -22,7 +22,7 @@ use warnings;
 use POSIX;
 use Data::Dumper qw (Dumper);
 
-our $VERSION = '2021-01-13';
+our $VERSION = '2021-01-18';
 
 my %models = (
   'enjoy_motors_HS' => {  Button => { 'stop'  =>  '1000',
@@ -672,11 +672,14 @@ sub Set($$$@) {
         Log3 $name, 5, "$ioname: SD_Keeloq_Set - Counter                   = $counter_send";
         Log3 $name, 5, "$ioname: SD_Keeloq_Set - encoded (encrypt)         = ".sprintf("%032b", $encoded)."\n";
 
-        my $binsplit = SD_Keeloq_binsplit_JaroLift($bits) if (AttrVal($name, "verbose", "3") eq "5");
-
         Log3 $name, 5, "$ioname: SD_Keeloq_Set                                           encoded     <- | ->     decrypts";
         Log3 $name, 5, "$ioname: SD_Keeloq_Set                       Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
-        Log3 $name, 5, "$ioname: SD_Keeloq_Set - bits (send split) = $binsplit";
+
+        if (AttrVal($name, "verbose", "3") eq "5") {
+          my $binsplit = SD_Keeloq_binsplit_JaroLift($bits);
+          Log3 $name, 5, "$ioname: SD_Keeloq_Set - bits (send split) = $binsplit";
+        }
+
         Log3 $name, 5, "$ioname: SD_Keeloq_Set - bits (send)       = $bits";
         Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG           = $msg";
         Log3 $name, 4, "######## DEBUG SET - END ########";
@@ -980,12 +983,15 @@ sub Parse($$) {
     ($bit8to15) = @_ = ( reverse (substr ($bitData , 8 , 8)) , "encrypted" )[$encrypted];     # without MasterMSB | MasterLSB encrypted
     $bit64to71 = reverse (substr ($bitData , 64 , 8));
 
-    $binsplit = SD_Keeloq_binsplit_JaroLift($bitData) if (AttrVal($name, "verbose", "3") eq "5");
-
     Log3 $name, 5, "$ioname: SD_Keeloq_Parse - typ = $model";
     Log3 $name, 5, "$ioname: SD_Keeloq_Parse                                 encoded     <- | ->     decrypts";
     Log3 $name, 5, "$ioname: SD_Keeloq_Parse             Grp 0-7 |digitS/N|      counter    | ch |          serial        | bt |Grp 8-15";
-    Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
+
+    if (AttrVal($name, "verbose", "3") eq "5") {
+      $binsplit = SD_Keeloq_binsplit_JaroLift($bitData);
+      Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = $binsplit";
+    }
+
     Log3 $name, 5, "$ioname: SD_Keeloq_Parse - bitData = |->     must be calculated!     <-| ".reverse (substr ($bitData , 32 , 4)) ." ". reverse (substr ($bitData , 36 , 24)) ." ".$button ." ". $bit64to71;
 
     my @groups8_15 = split //, reverse $bit64to71;
