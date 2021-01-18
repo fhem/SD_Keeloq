@@ -106,7 +106,7 @@ my @jaro_addGroups;
 my $KeeLoq_NLF;
 
 ###################################
-sub SD_Keeloq_Initialize() {
+sub SD_Keeloq_Initialize {
   my ($hash) = @_;
   $hash->{Match}        = '^P(?:87|88)#.*';
   $hash->{DefFn}        = 'SD_Keeloq::Define';
@@ -128,6 +128,7 @@ sub SD_Keeloq_Initialize() {
   {
     'SD_Keeloq_.*' => { ATTR => 'event-min-interval:.*:300 event-on-change-reading:.*', FILTER => '%NAME', autocreateThreshold => '3:180', GPLOT => ''},
   };
+  return;
 }
 
 ###################################
@@ -171,7 +172,7 @@ BEGIN {
 };
 
 ###################################
-sub Define() {
+sub Define {
   my ($hash, $def) = @_;
   my @a = split("[ \t][ \t]*", $def);
 
@@ -203,11 +204,11 @@ sub Define() {
   CommandAttr($hash,"$name model $model") if ( not exists($attr{$name}{model}) );
 
   AssignIoPort($hash, $iodevice);
-  return undef;
+  return;
 }
 
 ###################################
-sub Attr(@) {
+sub Attr {
   my ($cmd, $name, $attrName, $attrValue) = @_;
   my $hash = $defs{$name};
   my $addGroups = AttrVal($name, 'addGroups', '');
@@ -280,7 +281,7 @@ sub Attr(@) {
           
           ## attrValue check and sort in ##
           if( $attrValue =~ m/^\{.*\}$/s && $attrValue =~ m/=>/ && $attrValue !~ m/\$/ ) {
-            my $av = eval $attrValue;
+            my $av = eval { $attrValue };
             if( $@ ) {
               return 'ERROR: '.$@;
             } else {
@@ -381,7 +382,7 @@ sub Attr(@) {
 }
 
 ###################################
-sub Set($$$@) {
+sub Set {
   my ( $hash, $name, @a ) = @_;
   my $ioname = $hash->{IODev}{NAME};
   my $addGroups = AttrVal($name, 'addGroups', '');
@@ -682,7 +683,7 @@ sub Set($$$@) {
 
         Log3 $name, 5, "$ioname: SD_Keeloq_Set - bits (send)       = $bits";
         Log3 $name, 4, "$ioname: SD_Keeloq_Set - sendMSG           = $msg";
-        Log3 $name, 4, "######## DEBUG SET - END ########";
+        Log3 $name, 4, '######## DEBUG SET - END ########';
 
         IOWrite($hash, 'sendMsg', $msg);
         Log3 $name, 3, "$ioname: $name set $cmd $cmd2";
@@ -773,7 +774,7 @@ sub Set($$$@) {
         Log3 $name, 4, "$ioname: SD_Keeloq_Set - !! user set rolling codes, no function guaranteed !!";
 
         my $RollingCodes = AttrVal($name,'RollingCodes',undef);
-        my $av = eval $RollingCodes;
+        my $av = eval { $RollingCodes };
         if( $@ ) {
           return 'ERROR: '.$@;
         } else {
@@ -829,7 +830,7 @@ sub Set($$$@) {
 }
 
 ###################################
-sub Parse($$) {
+sub Parse {
   my ($iohash, $msg) = @_;
   my $ioname = $iohash->{NAME};
   my ($protocol,$rawData) = split("#",$msg);
@@ -1218,29 +1219,32 @@ sub Parse($$) {
 }
 
 #####################################
-sub Undef($$) {
+sub Undef {
   my ($hash, $name) = @_;
   delete($modules{SD_Keeloq}{defptr}{$hash->{DEF}}) if(defined($hash->{DEF}) && defined($modules{SD_Keeloq}{defptr}{$hash->{DEF}}));
   delete($modules{SD_Keeloq}{defptr}{ioname}) if (exists $modules{SD_Keeloq}{defptr}{ioname});
   delete $hash->{helper}{RollingCodes} if(defined($hash->{helper}{RollingCodes}));
-  return undef;
+  return;
 }
 
 ###################################
-sub SD_Keeloq_bin2dec($) {
+sub SD_Keeloq_bin2dec {
+  # binary to decimal converter (one argument)
   my $bin = shift;
   my $dec = oct("0b" . $bin);
   return $dec;
 }
 
 ###################################
-sub SD_Keeloq_dec2bin($) {
+sub SD_Keeloq_dec2bin {
+  # decimal to binary converter (one argument)
   my $bin = unpack("B32", pack("N", shift));
   return $bin;
 }
 
 ###################################
-sub SD_Keeloq_translate($) {
+sub SD_Keeloq_translate {
+  # converter umlauts (one argument)
   my $text = shift;
   my %translate = ("ä" => "&auml;", "Ä" => "&Auml;", "ü" => "&uuml;", "Ü" => "&Uuml;", "ö" => "&ouml;", "Ö" => "&Ouml;", "ß" => "&szlig;" );
   my $keys = join ("|", keys(%translate));
@@ -1249,7 +1253,8 @@ sub SD_Keeloq_translate($) {
 }
 
 ###################################
-sub SD_Keeloq_encrypt($$$$) {
+sub SD_Keeloq_encrypt {
+  # encrypt the value (four argument)
   my $x = shift;
   my $_keyHigh = shift;
   my $_keyLow = shift;
@@ -1278,7 +1283,8 @@ sub SD_Keeloq_encrypt($$$$) {
 }
 
 ###################################
-sub SD_Keeloq_decrypt($$$$) {
+sub SD_Keeloq_decrypt {
+  # decrypt the value (four argument)
   my $x = shift;
   my $_keyHigh = shift;
   my $_keyLow = shift;
@@ -1313,7 +1319,8 @@ sub SD_Keeloq_decrypt($$$$) {
 }
 
 ###################################
-sub SD_Keeloq_bitRead($$) {
+sub SD_Keeloq_bitRead {
+  # read value (two argument)
   my $wert = shift;
   my $bit = shift;
 
@@ -1321,7 +1328,8 @@ sub SD_Keeloq_bitRead($$) {
 }
 
 #####################################
-sub SD_Keeloq_binsplit_JaroLift($) {
+sub SD_Keeloq_binsplit_JaroLift {
+  # splits value with spaces for a better overview (one argument)
   my $bits = shift;
   my $binsplit;
 
@@ -1334,7 +1342,8 @@ sub SD_Keeloq_binsplit_JaroLift($) {
 }
 
 #####################################
-sub SD_Keeloq_binsplit_Roto($) {
+sub SD_Keeloq_binsplit_Roto {
+  # splits value with spaces for a better overview (one argument)
   my $bits = shift;
   my $binsplit;
 
@@ -1347,7 +1356,8 @@ sub SD_Keeloq_binsplit_Roto($) {
 }
 
 #####################################
-sub summaryFn($$$$) {
+sub summaryFn {
+  # Provides the ability to view additional data on a device's details screen, appears before the section "Internals". (four argument)
   my ($FW_wname, $d, $room, $pageHash) = @_;                    # pageHash is set for summaryFn.
   my $hash   = $defs{$d};
   my $name = $hash->{NAME};
@@ -1356,7 +1366,8 @@ sub summaryFn($$$$) {
 
 #####################################
 # Create HTML-Code
-sub SD_Keeloq_attr2html($@) {
+sub SD_Keeloq_attr2html {
+  # creates html code (two argument)
   my ($name, $hash) = @_;
   my $addGroups = AttrVal($name, 'addGroups', '');              # groups with channels
   my $Channels = AttrVal($name, 'Channels', 1);
@@ -1468,7 +1479,8 @@ sub SD_Keeloq_attr2html($@) {
 }
 
 #####################################
-sub SD_Keeloq_attr2htmlButtons($$$$$) {
+sub SD_Keeloq_attr2htmlButtons {
+  # creates html code for button overview if ShowIcons 1 set (five argument)
   my ($channel, $name, $ShowIcons, $ShowShade, $ShowLearn) = @_;    # $name = name of device | $channel = 1 ... 16 or channelgroup example 2,4
   my $html = "";
 
