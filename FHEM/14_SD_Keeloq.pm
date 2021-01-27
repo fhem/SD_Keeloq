@@ -22,7 +22,7 @@ use warnings;
 use POSIX;
 use Data::Dumper qw (Dumper);
 
-our $VERSION = '2021-01-18';
+our $VERSION = '2021-01-27';
 
 my %models = (
   'enjoy_motors_HS' => {  Button => { 'stop'  =>  '1000',
@@ -200,7 +200,6 @@ sub Define {
   my $ioname = $modules{SD_Keeloq}{defptr}{ioname} if (exists $modules{SD_Keeloq}{defptr}{ioname} && not $iodevice);
   $iodevice = $ioname if not $iodevice;
 
-  CommandAttr($hash,"$name room SD_Keeloq") if ( not exists($attr{$name}{room}) );
   CommandAttr($hash,"$name model $model") if ( not exists($attr{$name}{model}) );
 
   AssignIoPort($hash, $iodevice);
