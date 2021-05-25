@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 0 2021-01-18 15:58:29Z $
+# $Id: 14_SD_Keeloq.pm 0 2021-05-25 11:49:29Z $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -22,7 +22,7 @@ use warnings;
 use POSIX;
 use Data::Dumper qw (Dumper);
 
-our $VERSION = '2021-01-27';
+our $VERSION = '2021-05-25';
 
 my %models = (
   'enjoy_motors_HS' => {  Button => { 'stop'  =>  '1000',
@@ -126,7 +126,7 @@ sub SD_Keeloq_Initialize {
   $hash->{FW_deviceOverview}      = 1;
   $hash->{AutoCreate} =
   {
-    'SD_Keeloq_.*' => { ATTR => 'event-min-interval:.*:300 event-on-change-reading:.*', FILTER => '%NAME', autocreateThreshold => '3:180', GPLOT => ''},
+    'SD_Keeloq_.*' => { ATTR => 'event-min-interval:.*:300 event-on-change-reading:.*', FILTER => '%NAME', autocreateThreshold => '5:180', GPLOT => q{}},
   };
   return;
 }
