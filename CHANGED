@@ -6,7 +6,7 @@
   * remove fixed room after define (so work autocreate attribute device_room , weblink_room)
 2021-01-18 - Update 14_SD_Keeloq.pm
 
-* revised some PerlCritic syntax
+  * revised some PerlCritic syntax
 2021-01-18 - Update 14_SD_Keeloq.pm
 
   * revised some PerlCritic syntax
