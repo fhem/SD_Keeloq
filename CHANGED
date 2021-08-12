@@ -1,58 +1,54 @@
-2021-08-12 - Merge branch 'pre_release'
+2021-08-12 - Update CHANGED
 2021-08-12 - Update 14_SD_Keeloq.pm
+  * added attribute ignore https://github.com/fhem/SD_Keeloq/issues/22
 
- * added attribute ignore https://github.com/fhem/SD_Keeloq/issues/22
-2021-05-25 - Update CHANGED
 2021-05-25 - Update 14_SD_Keeloq.pm
-
   * autocreate customized
+
 2021-01-27 - Update 14_SD_Keeloq.pm
-
   * remove fixed room after define (so work autocreate attribute device_room , weblink_room)
-2021-01-18 - Update 14_SD_Keeloq.pm
 
-  * revised some PerlCritic syntax
 2021-01-18 - Update 14_SD_Keeloq.pm
-
   * revised some PerlCritic syntax
+
+2021-01-18 - Update 14_SD_Keeloq.pm
+  * revised some PerlCritic syntax
+
 2021-01-18 - 14_SD_Keeloq.pm  - fix WARNINGS
-
   * fix uninitialized value WARNINGS https://github.com/fhem/SD_Keeloq/issues/20#issuecomment-761528446
-2021-01-13 - Update 14_SD_Keeloq.pm
 
+2021-01-13 - Update 14_SD_Keeloq.pm
   * fix https://github.com/fhem/SD_Keeloq/issues/21
   * replace hard  tabs to spaces
   * replace some " to ' for PerlCritic
-2020-12-02 - Automaitc updated controls and CHANGED
+
 2020-12-02 - Update 14_SD_Keeloq.pm
-
   * fixed commandref syntax
-2020-12-02 - Merge branch 'pre-release'
+
 2020-01-19 - Update 14_SD_Keeloq.pm
-- added option user rollingcode send
+  * added option user rollingcode send
 
 2020-01-18 - Update 14_SD_Keeloq.pm
-- fix autocreate
-- revised code
-- delete readings user_info & user_modus for model enjoy_motors_HS
+  * fix autocreate
+  * revised code
+  * delete readings user_info & user_modus for model enjoy_motors_HS
 
 2020-01-18 - Update 14_SD_Keeloq.pm
-- revised function
+  * revised function
 
 2020-01-18 - Update 14_SD_Keeloq.pm
-- change direct write to function
+  * change direct write to function
 
 2020-01-18 - Update 14_SD_Keeloq.pm
-- revised send option enjoy_motors_HS
+  * revised send option enjoy_motors_HS
 
 2020-01-15 - Update 14_SD_Keeloq.pm
-- added enjoy_motors_HS option to send if user receive bitMSG
-- added some doc
+  * added enjoy_motors_HS option to send if user receive bitMSG
+  * added some doc
 
 2020-01-12 - Update 14_SD_Keeloq.pm
-- added model enjoy_motors_HS
+  * added model enjoy_motors_HS
 
 2020-01-11 - added FHEM update option
 
-2020-01-11
-14_SD_Keeloq.pm: transfer to fhem Github 
+2020-01-11 - 14_SD_Keeloq.pm: transfer to fhem Github
