@@ -1,5 +1,5 @@
 ######################################################################################################################
-# $Id: 14_SD_Keeloq.pm 0 2021-05-25 11:49:29Z $
+# $Id: 14_SD_Keeloq.pm 0 2021-08-12 11:49:29Z $
 #
 # The file is part of the SIGNALduino project.
 # https://github.com/RFD-FHEM/RFFHEM
@@ -22,7 +22,7 @@ use warnings;
 use POSIX;
 use Data::Dumper qw (Dumper);
 
-our $VERSION = '2021-05-25';
+our $VERSION = '2021-08-12';
 
 my %models = (
   'enjoy_motors_HS' => {  Button => { 'stop'  =>  '1000',
@@ -114,7 +114,7 @@ sub SD_Keeloq_Initialize {
   $hash->{AttrFn}       = 'SD_Keeloq::Attr';
   $hash->{SetFn}        = 'SD_Keeloq::Set';
   $hash->{ParseFn}      = 'SD_Keeloq::Parse';
-  $hash->{AttrList}     = 'IODev MasterMSB MasterLSB KeeLoq_NLF '.
+  $hash->{AttrList}     = 'IODev MasterMSB MasterLSB KeeLoq_NLF ignore:0,1 '.
                           'ChannelFixed:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 ChannelNames Repeats:1,2,3,4,5,6,7,8,9 '.
                           'Channels:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 '.
                           'ShowShade:0,1 ShowIcons:0,1 ShowLearn:0,1 '.
@@ -152,6 +152,7 @@ BEGIN {
     FmtDateTime
     IOWrite
     InternalVal
+    IsIgnored
     Log3
     ReadingsVal
     addStructChange
@@ -925,6 +926,8 @@ sub Parse {
 
   my $hash = $def;
   my $name = $hash->{NAME};
+  return '' if(IsIgnored($name));
+
   my $MasterMSB = AttrVal($name, 'MasterMSB', '');
   my $MasterLSB = AttrVal($name, 'MasterLSB', '');
   $KeeLoq_NLF = AttrVal($name, 'KeeLoq_NLF', '');
