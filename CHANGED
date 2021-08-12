@@ -1,4 +1,19 @@
-2021-01-18 - Automaitc updated controls and CHANGED
+2021-08-12 - Update 14_SD_Keeloq.pm
+
+ * added attribute ignore https://github.com/fhem/SD_Keeloq/issues/22
+2021-05-25 - Update CHANGED
+2021-05-25 - Update 14_SD_Keeloq.pm
+
+  * autocreate customized
+2021-01-27 - Update 14_SD_Keeloq.pm
+
+  * remove fixed room after define (so work autocreate attribute device_room , weblink_room)
+2021-01-18 - Update 14_SD_Keeloq.pm
+
+  * revised some PerlCritic syntax
+2021-01-18 - Update 14_SD_Keeloq.pm
+
+  * revised some PerlCritic syntax
 2021-01-18 - 14_SD_Keeloq.pm  - fix WARNINGS
 
   * fix uninitialized value WARNINGS https://github.com/fhem/SD_Keeloq/issues/20#issuecomment-761528446
